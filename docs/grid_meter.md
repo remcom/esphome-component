@@ -10,9 +10,9 @@ An ESPHome external component that emulates a Carlo Gavazzi EM24 Ethernet energy
 
 ## How it works
 
-The component runs a Modbus TCP server directly on the ESP32. Whenever the ESPHome DSMR P1 component pushes new sensor values, they are written into a register array matching the EM24 register map. The Victron Cerbo GX polls this server over TCP and treats the ESP32 as an AC grid energy meter (single-phase or three-phase) — no RS485 adapter, no USB dongle, no extra devices.
+The component runs a Modbus TCP server directly on the ESP. Whenever the ESPHome DSMR P1 component pushes new sensor values, they are written into a register array matching the EM24 register map. The Victron Cerbo GX polls this server over TCP and treats the ESP as an AC grid energy meter (single-phase or three-phase) — no RS485 adapter, no USB dongle, no extra devices.
 
-If the power sensors stop delivering valid readings (e.g. the P1 cable is unplugged), the component suspends the Modbus server after `data_timeout` (default 30 s) so the Cerbo marks the meter offline instead of acting on frozen values. Service resumes automatically when data returns.
+The Modbus service only starts once the first valid power reading has arrived, so the Cerbo never sees placeholder zeros after a reboot. If the power sensors then stop delivering valid readings (e.g. the P1 cable is unplugged), the component suspends the Modbus server after `data_timeout` (default 30 s) so the Cerbo marks the meter offline instead of acting on frozen values. Service resumes automatically when data returns. While suspended, the component shows a warning status in ESPHome.
 
 ### Why EM24, not ET112?
 
@@ -40,6 +40,7 @@ Per-phase registers step by 2 per phase: L1 at the base address, L2 at base+2, L
 | 0x1002        | Phase config        | uint16 | —            | 3 = 1P, 0 = 3P.n (auto-selected) |
 | 0x5000–0x5006 | Serial number       | text   | —            | from `serial_number:` option, else zeros |
 | 0xa000        | Application         | uint16 | —            | 7 = H mode (required by Cerbo) |
+| 0xa100        | Switch position     | uint16 | —            | 2 = '1' (active kWh, both directions) |
 
 - Power is signed: positive = importing from grid, negative = exporting
 - Current is always positive magnitude (direction inferred from power sign)
@@ -57,7 +58,7 @@ external_components:
       type: git
       url: https://github.com/remcom/esphome-component
       ref: main
-    refresh: 1h
+    refresh: 1d
     components:
       - grid_meter
 
@@ -121,7 +122,7 @@ All eight sensor keys are required. The sensor IDs must match `id:` fields on se
 |-----|---------|-------------|
 | `port` | `502` | Modbus TCP listening port. The Cerbo GX expects 502, so only change this for testing. |
 | `serial_number` | *(zeros)* | Up to 14 ASCII characters, reported in the EM24 serial registers. Set a unique value per device — VRM uses it to identify the meter (recommended when running more than one). |
-| `data_timeout` | `30s` | Suspend the Modbus server when no valid power reading arrives for this long, so the Cerbo marks the meter offline instead of trusting stale data. `0s` disables the watchdog. |
+| `data_timeout` | `30s` | Suspend the Modbus server when no valid power reading arrives for this long, so the Cerbo marks the meter offline instead of trusting stale data. `0s` disables the watchdog; the server then also serves zeros until the first reading arrives. |
 
 ### Three-phase mode
 
@@ -151,7 +152,8 @@ With DSMR, use the per-phase `power_delivered_l1/l2/l3` and `power_returned_l1/l
 
 ## Requirements
 
-- ESP-IDF framework (not Arduino)
+- ESPHome 2026.4.0 or newer
+- A network-capable platform. Compile-tested on ESP32 (ESP-IDF and Arduino), ESP8266 and RP2040 (Pico W); the server uses ESPHome's `socket` component, so other platforms it supports should work too
 - DSMR P1 component providing the sensor data
 - `id:` fields on all sensor references used in the `grid_meter:` block
 
@@ -165,8 +167,16 @@ Schema tests (no hardware required):
 pytest tests/grid_meter/test_schema.py -v
 ```
 
-Integration tests require the device to be flashed and reachable on the network:
+Integration tests run against a flashed device:
 
 ```bash
-pytest tests/grid_meter/test_grid_meter.py --device-ip=<ESP32_IP> -v
+pytest tests/grid_meter/test_grid_meter.py --device-ip=<DEVICE_IP> -v
+```
+
+…or against a host build of the test configuration, which serves fixed sensor values on port 5020:
+
+```bash
+esphome compile tests/components/grid_meter/test.host.yaml
+tests/components/grid_meter/.esphome/build/grid-meter-host/.pioenvs/grid-meter-host/program &
+pytest tests/grid_meter/test_grid_meter.py --device-ip=127.0.0.1 --device-port=5020 -v
 ```

@@ -1,0 +1,12 @@
+substitutions:
+  device_name: sunspec-modbus-esp8266-ard
+
+packages:
+  base: !include ../common/esp8266-ard.yaml
+  sunspec: !include common.yaml
+  modbus: !include modbus.yaml
+
+uart:
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+  baud_rate: 9600

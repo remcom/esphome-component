@@ -1,0 +1,6 @@
+substitutions:
+  device_name: grid-meter-rp2040-ard
+
+packages:
+  base: !include ../common/rp2040-ard.yaml
+  grid_meter: !include common.yaml

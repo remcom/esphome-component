@@ -1,0 +1,6 @@
+substitutions:
+  device_name: sunspec-rp2040-ard
+
+packages:
+  base: !include ../common/rp2040-ard.yaml
+  sunspec: !include common.yaml

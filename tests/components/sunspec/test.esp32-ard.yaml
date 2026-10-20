@@ -1,0 +1,6 @@
+substitutions:
+  device_name: sunspec-esp32-ard
+
+packages:
+  base: !include ../common/esp32-ard.yaml
+  sunspec: !include common.yaml

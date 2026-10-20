@@ -1,0 +1,42 @@
+substitutions:
+  device_name: grid-meter-three-phase
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+  grid_meter: !include common.yaml
+
+sensor:
+  - platform: template
+    id: voltage_l2
+    lambda: return 231.0;
+  - platform: template
+    id: current_l2
+    lambda: return 1.0;
+  - platform: template
+    id: power_delivered_l2
+    lambda: return 200.0;
+  - platform: template
+    id: power_returned_l2
+    lambda: return 0.0;
+  - platform: template
+    id: voltage_l3
+    lambda: return 229.0;
+  - platform: template
+    id: current_l3
+    lambda: return 2.0;
+  - platform: template
+    id: power_delivered_l3
+    lambda: return 400.0;
+  - platform: template
+    id: power_returned_l3
+    lambda: return 0.0;
+
+grid_meter:
+  voltage_l2: voltage_l2
+  current_l2: current_l2
+  power_import_l2: power_delivered_l2
+  power_export_l2: power_returned_l2
+  voltage_l3: voltage_l3
+  current_l3: current_l3
+  power_import_l3: power_delivered_l3
+  power_export_l3: power_returned_l3

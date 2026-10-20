@@ -1,0 +1,11 @@
+substitutions:
+  device_name: sunspec-modbus-host
+
+packages:
+  base: !include ../common/host.yaml
+  sunspec: !include common.yaml
+  modbus: !include modbus.yaml
+
+uart:
+  port: /dev/null
+  baud_rate: 9600

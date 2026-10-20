@@ -1,0 +1,6 @@
+substitutions:
+  device_name: grid-meter-esp32-ard
+
+packages:
+  base: !include ../common/esp32-ard.yaml
+  grid_meter: !include common.yaml

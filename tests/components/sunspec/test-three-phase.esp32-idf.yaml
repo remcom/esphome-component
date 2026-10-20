@@ -1,0 +1,33 @@
+substitutions:
+  device_name: sunspec-three-phase
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+  sunspec: !include common.yaml
+
+sensor:
+  - platform: template
+    id: current_l1
+    lambda: return 3.0;
+  - platform: template
+    id: current_l2
+    lambda: return 3.1;
+  - platform: template
+    id: current_l3
+    lambda: return 2.9;
+  - platform: template
+    id: voltage_l2
+    lambda: return 230.0;
+  - platform: template
+    id: voltage_l3
+    lambda: return 229.5;
+
+sunspec:
+  - id: !extend sunspec_server
+    phases: 3
+    rated_power: 30000
+    ac_current_phase_a: current_l1
+    ac_current_phase_b: current_l2
+    ac_current_phase_c: current_l3
+    ac_voltage_phase_b: voltage_l2
+    ac_voltage_phase_c: voltage_l3

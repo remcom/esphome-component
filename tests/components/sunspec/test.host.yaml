@@ -1,0 +1,6 @@
+substitutions:
+  device_name: sunspec-host
+
+packages:
+  base: !include ../common/host.yaml
+  sunspec: !include common.yaml

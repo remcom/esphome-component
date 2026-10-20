@@ -1,0 +1,6 @@
+substitutions:
+  device_name: grid-meter-esp8266-ard
+
+packages:
+  base: !include ../common/esp8266-ard.yaml
+  grid_meter: !include common.yaml

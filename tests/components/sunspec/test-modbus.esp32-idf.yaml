@@ -1,0 +1,12 @@
+substitutions:
+  device_name: sunspec-modbus-esp32-idf
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+  sunspec: !include common.yaml
+  modbus: !include modbus.yaml
+
+uart:
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 9600

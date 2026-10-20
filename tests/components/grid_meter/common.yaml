@@ -1,0 +1,49 @@
+# Fixed sensor values chosen to satisfy the integration tests in tests/grid_meter/
+substitutions:
+  modbus_port: "502"
+
+sensor:
+  - platform: template
+    id: power_delivered
+    lambda: return 1234.0;
+    update_interval: 1s
+  - platform: template
+    id: power_returned
+    lambda: return 0.0;
+    update_interval: 1s
+  - platform: template
+    id: voltage_l1
+    lambda: return 230.1;
+    update_interval: 1s
+  - platform: template
+    id: current_l1
+    lambda: return 5.37;
+    update_interval: 1s
+  - platform: template
+    id: energy_delivered_tariff1
+    lambda: return 1000.5;
+    update_interval: 10s
+  - platform: template
+    id: energy_delivered_tariff2
+    lambda: return 2000.25;
+    update_interval: 10s
+  - platform: template
+    id: energy_returned_tariff1
+    lambda: return 300.0;
+    update_interval: 10s
+  - platform: template
+    id: energy_returned_tariff2
+    lambda: return 400.0;
+    update_interval: 10s
+
+grid_meter:
+  power_import: power_delivered
+  power_export: power_returned
+  voltage: voltage_l1
+  current: current_l1
+  energy_import_t1: energy_delivered_tariff1
+  energy_import_t2: energy_delivered_tariff2
+  energy_export_t1: energy_returned_tariff1
+  energy_export_t2: energy_returned_tariff2
+  port: ${modbus_port}
+  serial_number: "TEST0001"

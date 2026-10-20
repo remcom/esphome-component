@@ -1,0 +1,16 @@
+esphome:
+  name: ${device_name}
+
+rp2040:
+  board: rpipicow
+
+wifi:
+  ssid: test
+  password: password1
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components

@@ -1,0 +1,6 @@
+substitutions:
+  device_name: grid-meter-esp32-idf
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+  grid_meter: !include common.yaml

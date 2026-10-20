@@ -1,0 +1,18 @@
+esphome:
+  name: ${device_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+wifi:
+  ssid: test
+  password: password1
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../../../components
