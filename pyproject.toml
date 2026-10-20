@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Each component has its own tests/<component>/test_schema.py; importlib mode
+# avoids module-name collisions between same-named test files.
+addopts = "--import-mode=importlib"

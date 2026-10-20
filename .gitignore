@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store
+
+# ESPHome build output when compiling example configs locally
+.esphome/
+secrets.yaml
