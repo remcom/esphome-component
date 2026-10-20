@@ -45,23 +45,41 @@ ref: main
 ## Repository layout
 
 ```
-components/<name>/   # ESPHome component: __init__.py (schema + codegen), .h/.cpp (runtime)
-docs/<name>.md       # User documentation per component
-tests/<name>/        # Schema tests (no hardware) and integration tests (live device)
-tests/conftest.py    # Shared pytest options and Modbus TCP client fixture
+components/<name>/         # ESPHome component: __init__.py (schema + codegen), .h/.cpp (runtime)
+docs/<name>.md             # User documentation per component
+tests/<name>/              # Schema tests (no hardware) and integration tests (live device or host build)
+tests/components/<name>/   # Compile-test configurations per platform
+tests/conftest.py          # Shared pytest options and Modbus TCP fixtures
 ```
+
+## Requirements
+
+ESPHome 2026.4.0 or newer. The components use ESPHome's `socket` component and are compile-tested on
+ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and the host platform.
 
 ## Running tests
 
 ```bash
 pip install -r requirements.txt
 
+# Lint and format (ruff, clang-format; same versions as ESPHome)
+pre-commit run --all-files
+
+# Static analysis with ESPHome's .clang-tidy (builds the host test configs for a compile database)
+script/clang-tidy.sh
+
 # Schema tests for all components (no hardware required)
 pytest -k schema -v
 
+# Compile a test configuration
+esphome compile tests/components/<component>/test.esp32-idf.yaml
+
 # Integration tests against a flashed device
-pytest tests/<component>/ --device-ip=<ESP32_IP> [--device-port=502] -v
+pytest tests/<component>/ --device-ip=<DEVICE_IP> [--device-port=502] -v
 ```
+
+The integration tests can also run against a host build instead of hardware; see the component docs. CI
+(`.github/workflows/ci.yml`) runs all of the above, including the integration tests against host builds.
 
 ## License
 

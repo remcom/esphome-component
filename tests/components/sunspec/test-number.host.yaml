@@ -1,0 +1,8 @@
+substitutions:
+  device_name: sunspec-number-host
+  modbus_port: "5021"
+
+packages:
+  base: !include ../common/host.yaml
+  sunspec: !include common.yaml
+  number: !include number.yaml

@@ -1,0 +1,8 @@
+# Also the target of the integration tests (port 5020: no root needed)
+substitutions:
+  device_name: grid-meter-host
+  modbus_port: "5020"
+
+packages:
+  base: !include ../common/host.yaml
+  grid_meter: !include common.yaml

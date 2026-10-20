@@ -1,3 +1,8 @@
-pymodbus>=3.0,<4.0
+# Pinned so CI is reproducible; the components themselves support ESPHome >= 2026.4.0
+esphome==2026.9.1
+# 3.10 renamed slave= to device_id=, which the integration tests use
+pymodbus>=3.10,<4.0
 pytest>=7.0
-esphome
+# Lint tooling, same versions as ESPHome (clang-format/ruff come via pre-commit)
+pre-commit
+clang-tidy==22.1.8

@@ -1,0 +1,6 @@
+substitutions:
+  device_name: sunspec-esp8266-ard
+
+packages:
+  base: !include ../common/esp8266-ard.yaml
+  sunspec: !include common.yaml

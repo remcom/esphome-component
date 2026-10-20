@@ -3,3 +3,40 @@ testpaths = ["tests"]
 # Each component has its own tests/<component>/test_schema.py; importlib mode
 # avoids module-name collisions between same-named test files.
 addopts = "--import-mode=importlib"
+
+# Lint rules follow ESPHome's own pyproject.toml
+[tool.ruff]
+required-version = ">=0.5.0"
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "B",    # flake8-bugbear
+  "BLE",  # flake8-blind-except
+  "C4",   # flake8-comprehensions
+  "E",    # pycodestyle
+  "F",    # pyflakes/autoflake
+  "FURB", # refurb
+  "I",    # isort
+  "ISC",  # flake8-implicit-str-concat
+  "PERF", # performance
+  "PIE",  # flake8-pie
+  "PL",   # pylint
+  "PTH",  # flake8-use-pathlib
+  "RET",  # flake8-ret
+  "SIM",  # flake8-simplify
+  "UP",   # pyupgrade
+  "W",    # pycodestyle warnings
+]
+ignore = [
+  "E501",    # line too long
+  "PLC0415", # `import` should be at the top-level of a file
+  "PLR0913", # Too many arguments to function call
+  "PLR2004", # Magic value used in comparison
+]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["esphome"]
+combine-as-imports = true
+split-on-trailing-comma = false

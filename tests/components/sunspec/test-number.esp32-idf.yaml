@@ -1,0 +1,7 @@
+substitutions:
+  device_name: sunspec-number-esp32-idf
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+  sunspec: !include common.yaml
+  number: !include number.yaml

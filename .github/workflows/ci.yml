@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  # Oldest ESPHome release the components support (cv.require_esphome_version)
+  ESPHOME_MIN_VERSION: "2026.4.0"
+
+jobs:
+  lint:
+    name: Lint (ruff, clang-format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: pre-commit/action@v3.0.1
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-host-${{ hashFiles('requirements.txt') }}
+      - run: script/clang-tidy.sh
+
+  schema:
+    name: Schema tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -k schema -v
+
+  list-configs:
+    name: List compile configs
+    runs-on: ubuntu-latest
+    outputs:
+      configs: ${{ steps.list.outputs.configs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          configs=$(ls tests/components/*/test*.yaml | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "configs=$configs" >> "$GITHUB_OUTPUT"
+
+  compile:
+    name: Compile ${{ matrix.config }}
+    needs: list-configs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.list-configs.outputs.configs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - id: platform
+        # tests/components/<name>/test[-variant].<platform>.yaml -> <platform>
+        env:
+          CONFIG: ${{ matrix.config }}
+        run: echo "platform=$(basename "$CONFIG" .yaml | sed 's/.*\.//')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ steps.platform.outputs.platform }}-${{ hashFiles('requirements.txt') }}
+      - env:
+          CONFIG: ${{ matrix.config }}
+        run: esphome compile "$CONFIG"
+
+  compile-min-version:
+    name: Compile on oldest supported ESPHome (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "esphome==$ESPHOME_MIN_VERSION"
+      - run: |
+          for config in tests/components/*/test*.host.yaml; do
+            esphome compile "$config"
+          done
+
+  integration:
+    name: Integration tests (host build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-host-${{ hashFiles('requirements.txt') }}
+      - name: Build host binaries
+        run: |
+          esphome compile tests/components/grid_meter/test.host.yaml
+          esphome compile tests/components/sunspec/test-number.host.yaml
+      - name: Start host binaries
+        run: |
+          tests/components/grid_meter/.esphome/build/grid-meter-host/.pioenvs/grid-meter-host/program > grid_meter.log 2>&1 &
+          tests/components/sunspec/.esphome/build/sunspec-number-host/.pioenvs/sunspec-number-host/program > sunspec.log 2>&1 &
+          for port in 5020 5021; do
+            timeout 60 bash -c "until (echo > /dev/tcp/127.0.0.1/$port) 2>/dev/null; do sleep 1; done"
+          done
+          # grid_meter only serves once the first power reading has been published
+          sleep 3
+      - run: pytest tests/grid_meter/test_grid_meter.py --device-ip=127.0.0.1 --device-port=5020 -v
+      - run: pytest tests/sunspec/test_sunspec.py --device-ip=127.0.0.1 --device-port=5021 --allow-writes -v
+      - name: Device logs
+        if: always()
+        run: cat grid_meter.log sunspec.log

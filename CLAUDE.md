@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A monorepo of ESPHome external components. Each component lives in `components/<name>/` and is consumed via `external_components` pointing at this repository. User-facing documentation per component is in `docs/<name>.md`; keep it in sync when changing a component's config schema or behaviour.
+A monorepo of ESPHome external components. Each component lives in `components/<name>/` and is consumed via `external_components` pointing at this repository. Components are standalone: they must not depend on each other or on shared code in this repo. User-facing documentation per component is in `docs/<name>.md`; keep it in sync when changing a component's config schema or behaviour.
 
 | Component | Summary |
 |-----------|---------|
@@ -21,9 +21,14 @@ docs/
   grid_meter.md
   sunspec.md
 tests/
-  conftest.py        # shared --device-ip / --device-port options + Modbus `client` fixture
+  conftest.py        # --device-ip / --device-port / --allow-writes, `client`, `raw_request`, `load_component` fixtures
   grid_meter/        # test_schema.py, test_grid_meter.py
   sunspec/           # test_schema.py, test_sunspec.py
+  components/        # ESPHome compile-test configs (ESPHome's tests/components layout)
+    common/          # per-platform base: esp32-idf, esp32-ard, esp8266-ard, rp2040-ard, host
+    <name>/          # common.yaml + test[-variant].<platform>.yaml
+script/clang-tidy.sh       # clang-tidy over the host builds of tests/components/*/test*.host.yaml
+.github/workflows/ci.yml   # lint, clang-tidy, schema tests, compile matrix, host integration tests
 ```
 
 ### Adding a new component
@@ -31,19 +36,25 @@ tests/
 1. `components/<name>/` with `__init__.py`, `<name>.h`, `<name>.cpp`
 2. `docs/<name>.md` with installation, configuration and limitations
 3. `tests/<name>/test_schema.py` (no hardware) and, where useful, an integration test using the shared `client` fixture
-4. Add a row to the component tables in `README.md` and this file
+4. `tests/components/<name>/common.yaml` and a `test.<platform>.yaml` per platform (CI compiles every `tests/components/*/test*.yaml` automatically)
+5. Add a row to the component tables in `README.md` and this file
 
 ## Running Tests
 
 ```bash
 pip install -r requirements.txt
+pre-commit run --all-files                                      # ruff + clang-format (ESPHome's versions)
+script/clang-tidy.sh                                            # clang-tidy with ESPHome's .clang-tidy (uses host builds)
 pytest -k schema -v                                             # all schema tests, no hardware
-pytest tests/<component>/ --device-ip=<ESP32_IP> -v             # integration tests against a flashed device
+esphome compile tests/components/<name>/test.esp32-idf.yaml     # compile test
+pytest tests/<component>/ --device-ip=<DEVICE_IP> -v            # integration tests against a flashed device
 ```
 
-pytest runs with `--import-mode=importlib` (see `pyproject.toml`) because each component has its own `test_schema.py`.
+Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
 
-**Schema test caveat:** schema tests that run a full `CONFIG_SCHEMA` fail if ESPHome `CORE` is not initialised with an ESP32 platform context, because `cv.only_on_esp32` is part of the schema.
+pytest runs with `--import-mode=importlib` (see `pyproject.toml`) because each component has its own `test_schema.py`; schema tests load a component with the `load_component` fixture.
+
+Minimum ESPHome version is 2026.4.0 (`cv.require_esphome_version` in both schemas; CI compiles the host configs on it). `requirements.txt` pins the version used for development and CI.
 
 ## Licensing
 
@@ -51,45 +62,51 @@ Same dual license as ESPHome (see `LICENSE`): C/C++ files (`.c`, `.cpp`, `.h`, `
 
 ## ESPHome Component Standards
 
-Follow https://github.com/esphome/esphome/blob/dev/.ai/instructions.md. Key rules for all components:
+Follow https://github.com/esphome/esphome/blob/dev/AGENTS.md. Key rules for all components:
 
 ### Python (`__init__.py`)
 
+- Metadata constants in alphabetical order: `AUTO_LOAD`, `CODEOWNERS = ["@remcom"]`, `DEPENDENCIES`, `DOMAIN = "<name>"`, `MULTI_CONF`.
 - Import constants from `esphome.const` where they exist; define local `CONF_*` strings only when no matching constant exists.
-- Declare `DEPENDENCIES = [...]` for always-required components. Optional components (used only when configured) must NOT be listed — that would force-load them unconditionally.
-- Add `cv.only_on_esp32` to `CONFIG_SCHEMA` for any component using POSIX socket APIs.
-- Use `cv.All(schema, validator_fn)` for cross-field validation, `cv.Inclusive` for all-or-none groups.
-- Add `cv.Length(max=N)` validators for strings that map to fixed-size registers.
+- Declare `DEPENDENCIES = [...]` for always-required components. Optional components (used only when configured) must NOT be listed — that would force-load them unconditionally. Code using an optional component goes behind a `cg.add_define()` emitted only when it is configured.
+- Use `cv.All(schema, validator_fn)` for cross-field validation, `cv.Inclusive` for all-or-none groups, `cv.has_at_most_one_key` for mutually exclusive keys.
+- Strings packed into registers: ASCII only and `cv.Length(max=N)` matching the register count.
 - Required + invariant fields → constructor parameters via `cg.new_Pvariable()`, not setters.
+- Type-hint signatures (`ConfigType` from `esphome.types`); use `if (x := config.get(KEY)) is not None:` for optional keys.
+- Automations: `automation.validate_automation({})` + `automation.build_callback_automation(...)`, no `Trigger` subclass.
 
 ### C++
 
 - **`this->` prefix**: All class member access must use `this->member_`.
 - **Namespace**: C++17 nested style — `namespace esphome::<name> {` / `}  // namespace esphome::<name>`.
-- **`dump_config()`**: Every component must implement `void dump_config() override`.
+- **Naming**: protected/private members and methods end with `_`.
+- **`dump_config()`**: Every component must implement `void dump_config() override`; don't check `is_failed()` there (core logs it).
 - **Constants**: `static constexpr` / `constexpr` over `static const`.
 - **Casts**: `static_cast<>` / `reinterpret_cast<>` — no C-style casts.
 - **No VLAs**: Use fixed-size arrays sized to the known maximum.
 - **TAG in `.cpp`**: `static const char *const TAG` belongs in the `.cpp` file only.
-- **POSIX headers in `.cpp`**: `sys/socket.h`, `netinet/in.h`, `arpa/inet.h` etc. belong in the `.cpp`, not the header.
-- **Check syscall return values**: `fcntl()`, `send()` and similar must have their return values checked and errors logged.
+- **Sockets**: use ESPHome's `socket` component (`socket::socket_ip_loop_monitored()`, `accept_loop_monitored()`), never raw POSIX calls. When `ready()` returns true, read/accept until the call would block. Check return values of `setblocking()`, `setsockopt()`, `bind()`, `listen()`, `write()`. Never block the loop waiting for a send buffer.
+- **Time**: use `App.get_loop_component_start_time()` in `loop()`, not `millis()`; `set_interval()` for periodic work ≥ 500 ms.
+- **Failures**: `mark_failed(LOG_STR("reason"))` in `setup()` only, without an `ESP_LOGE` of the same reason; runtime problems use `status_set_warning()` / `status_clear_warning()`.
+- **Callbacks**: `template<typename F> void add_on_x_callback(F &&cb)` — never `std::function` in the signature.
 - **Blank line between function definitions.**
+- Formatting is enforced by clang-format (`.clang-format`, ESPHome's) via pre-commit; `script/clang-tidy.sh` runs ESPHome's `.clang-tidy` (static class methods have no trailing `_`; round with `std::lround`, not `+ 0.5`).
 
-### Framework requirement
+### Platform support
 
-Both current components are ESP32 only (POSIX sockets: `socket()`, `bind()`, `listen()`, `accept()`, `recv()`, `send()`, `fcntl()`). They work with both ESP-IDF and Arduino frameworks on ESP32 (Arduino on ESP32 runs on top of ESP-IDF). Not compatible with ESP8266 or RP2040.
+Both components use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host.
 
 ---
 
 ## Component: `grid_meter`
 
-Emulates a Carlo Gavazzi EM24 Ethernet energy meter over Modbus TCP (port 502), so a Victron Cerbo GX can treat a Dutch DSMR P1 smart meter connected to an ESP32 as a grid energy meter.
+Emulates a Carlo Gavazzi EM24 Ethernet energy meter over Modbus TCP (port 502), so a Victron Cerbo GX can treat a Dutch DSMR P1 smart meter connected to an ESP as a grid energy meter.
 
 ### How it works
 
 `GridMeterComponent` (a standard ESPHome `Component`) runs a non-blocking Modbus TCP server in `loop()`:
 1. Sensor state callbacks set `registers_dirty_`; when set, `refresh_sensors_()` rebuilds `registers_[]` — a dense `uint16_t[80]` array covering EM24 addresses `0x0000–0x004F` (event-driven, not every loop)
-2. A stale-data watchdog suspends Modbus service when no valid power reading arrives within `data_timeout` (default 30 s), so the Cerbo marks the meter offline instead of using frozen values
+2. A stale-data watchdog refuses Modbus service until the first valid power reading and whenever none arrives within `data_timeout` (default 30 s), so the Cerbo marks the meter offline instead of using placeholder or frozen values. While suspended the component has a warning status.
 3. Accepts/reads/processes client connections (up to 2 simultaneous, `TCP_NODELAY`)
 
 Sensors: eight required references (L1 + energy totals, constructor parameters) plus optional per-phase L2/L3 groups (`set_phase_sensors()`, enforced all-or-none via `cv.Inclusive`). Configuring L2/L3 switches `PhaseConfig` (0x1002) from 3 (1P) to 0 (3P.n).
@@ -107,13 +124,13 @@ Sparse EM24 registers outside the dense range (`0x0302`, `0x0304`, `0x1002`, `0x
 
 ### ESPHome integration
 
-`__init__.py` declares the eight L1/energy sensor keys as `cv.Required` and passes them (plus `port`) as constructor arguments via `cg.new_Pvariable()`. Optional keys: per-phase L2/L3 sensor groups, `serial_number` (≤14 chars, Reg_text at 0x5000), `data_timeout` (0 disables the watchdog). `cv.only_on_esp32` is enforced via `cv.All()` in the schema.
+`__init__.py` declares the eight L1/energy sensor keys as `cv.Required` and passes them (plus `port`) as constructor arguments via `cg.new_Pvariable()`. Optional keys: per-phase L2/L3 sensor groups, `serial_number` (ASCII, ≤14 chars, Reg_text at 0x5000), `data_timeout` (0 disables the watchdog).
 
 ---
 
 ## Component: `sunspec`
 
-Runs a SunSpec Modbus TCP server (port 502) on an ESP32. It reads live inverter data from existing ESPHome sensors and serves it to SunSpec-compatible energy managers (Victron, SolarEdge, Fronius, etc.). It also accepts power limit commands and relays them back to the inverter over RS485 Modbus. Built for a Solis single-phase inverter bridged via an ESP32 running ESP-IDF.
+Runs a SunSpec Modbus TCP server (port 502). It reads live inverter data from existing ESPHome sensors and serves it to SunSpec-compatible energy managers (Victron, SolarEdge, Fronius, etc.). It also accepts power limit commands and relays them back to the inverter over RS485 Modbus. Built for a Solis single-phase inverter bridged via an ESP32 running ESP-IDF.
 
 ### SunSpec register layout
 
@@ -122,12 +139,14 @@ Runs a SunSpec Modbus TCP server (port 502) on an ESP32. It reads live inverter 
 | 40000–40069 | 1    | Common block (manufacturer, model, serial, version)   |
 | 40070–40121 | 101/103 | Inverter, single or three phase per `phases` config (power, voltage, current, freq, temp, energy, DC values, state) |
 | 40122–40149 | 120  | Nameplate (DER type, rated power)                     |
-| 40150–40175 | 123  | Controls (WMaxLimPct @ 40155 with SF=-2, WMaxLim_Ena @ 40159) |
+| 40150–40175 | 123  | Controls (WMaxLimPct @ 40155 with SF=-2, WMaxLimPct_RvrtTms @ 40157, WMaxLim_Ena @ 40159) |
 | 40176–40177 | —    | End model (ID 0xFFFF, length 0)                       |
 
-Writes (FC06/FC16) are accepted only in the Model 123 control window 40152–40172; scale factors (40173–40175) are read-only. Requests for any unit ID are served (SunSpec clients like Victron probe various unit IDs during discovery — rejecting mismatches broke Cerbo GX detection); the configured `address` is only reported in the Model 1 DA register. Sensors that stop updating for `stale_timeout` (default 5 min) are reported as "not implemented" (0x8000 for int16, 0xFFFF for uint16) and the inverter state falls back to Off.
+Writes (FC06/FC16) are accepted only in the Model 123 control window 40152–40172; scale factors (40173–40175) are read-only. Values are range-checked (`is_valid_control_value()`: WMaxLimPct ≤ 10000, enable flags 0/1) and an FC16 with any invalid value writes nothing (exception 0x03). Requests for any unit ID are served (SunSpec clients like Victron probe various unit IDs during discovery — rejecting mismatches broke Cerbo GX detection); the configured `address` is only reported in the Model 1 DA register. Sensors that stop updating for `stale_timeout` (default 5 min) are reported as "not implemented" (0x8000 for int16, 0xFFFF for uint16) and the inverter state falls back to Off.
 
-Register updates are event-driven: `add_on_state_callback` on each sensor patches only that sensor's register slot(s) via `update_slot_()`; `loop()` only handles TCP traffic and the once-per-second stale scan. The component supports `MULTI_CONF` (multiple instances, each on a unique port — enforced by `FINAL_VALIDATE_SCHEMA`).
+Register updates are event-driven: `add_on_state_callback` on each sensor patches only that sensor's register slot(s) via `update_slot_()`; `loop()` only handles TCP traffic and the revert timer, and a 1 s `set_interval` runs the stale scan. The component supports `MULTI_CONF` (multiple instances, each on a unique port, also distinct from a `grid_meter` port — enforced by `FINAL_VALIDATE_SCHEMA`).
+
+Power registers (W, DCW, WRtg) share one scale factor computed from `rated_power` in Python (`power_scale_factor()`: smallest SF in 0..2 keeping 1.5× rated power within int16).
 
 String fields use big-endian uint16 register pairs (2 chars per register):
 - Manufacturer, model, serial: 16 registers = 32 chars max
@@ -135,7 +154,9 @@ String fields use big-endian uint16 register pairs (2 chars per register):
 
 ### Power limit write-back
 
-`WMaxLimPct` is stored with scale factor -2 (raw 10000 = 100.00 %). Three mechanisms; the `on_power_limit` trigger always fires, plus at most one write-back path:
+`WMaxLimPct` is stored with scale factor -2 (raw 10000 = 100.00 %). Three mechanisms; the `on_power_limit` trigger always fires, plus at most one write-back path (`cv.has_at_most_one_key`). Write-back code is compiled only when configured (`USE_SUNSPEC_POWER_LIMIT_NUMBER` / `USE_SUNSPEC_MODBUS_CONTROLLER` defines), so trigger-only configs need neither `number` nor `modbus_controller`.
+
+Write-back runs only when the limit changes (`applied_limit_`); an unchanged limit is re-forwarded at most every 5 minutes (`LIMIT_REFRESH_MS`). `WMaxLimPct_RvrtTms` (seconds, 0/0xFFFF = off) disables the limit when no new limit command arrives in time; every limit write restarts it.
 
 **Via number entity (recommended):**
 - `WMaxLim_Ena = 1`: sets number entity to the limit percentage (0–100)
@@ -144,5 +165,6 @@ String fields use big-endian uint16 register pairs (2 chars per register):
 **Via direct Modbus register write (legacy; `modbus_controller_id` and `power_limit_register` must appear together):**
 - `WMaxLim_Ena = 1`: writes the limit percentage (rounded to whole %) to `power_limit_register`
 - `WMaxLim_Ena = 0`: writes `100` to restore full power
+- On ESPHome ≥ 2026.9 the write goes through the `LimitWriter` `ModbusClientDevice` on the controller's bus (failed writes are re-sent on the next command); older versions use the deprecated `ModbusCommandItem`, which is removed in 2027.3.0.
 
 **Via `on_power_limit` automation:** fires with `level` (float, 0–100 %) and `enabled` (bool).

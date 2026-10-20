@@ -1,0 +1,59 @@
+# Trigger-only write-back (no modbus_controller / number needed). Fixed sensor values
+# and manufacturer chosen to satisfy the integration tests in tests/sunspec/
+substitutions:
+  modbus_port: "502"
+
+sensor:
+  - platform: template
+    id: ac_power
+    lambda: return 2500.0;
+    update_interval: 5s
+  - platform: template
+    id: ac_voltage
+    lambda: return 231.4;
+    update_interval: 5s
+  - platform: template
+    id: ac_frequency
+    lambda: return 50.01;
+    update_interval: 5s
+  - platform: template
+    id: inverter_temp
+    lambda: return 41.5;
+    update_interval: 5s
+  - platform: template
+    id: energy_total
+    lambda: return 12345.678;
+    update_interval: 30s
+  - platform: template
+    id: dc_power
+    lambda: return 2600.0;
+    update_interval: 5s
+  - platform: template
+    id: dc_voltage
+    lambda: return 380.2;
+    update_interval: 5s
+  - platform: template
+    id: dc_current
+    lambda: return 6.84;
+    update_interval: 5s
+
+sunspec:
+  - id: sunspec_server
+    port: ${modbus_port}
+    manufacturer: Solis
+    model: S6-GR1P3K-M
+    serial_number: "TEST0001"
+    version: "1.0.0"
+    rated_power: 3000
+    ac_power: ac_power
+    ac_voltage: ac_voltage
+    ac_frequency: ac_frequency
+    temperature: inverter_temp
+    energy_total: energy_total
+    dc_power: dc_power
+    dc_voltage: dc_voltage
+    dc_current: dc_current
+    on_power_limit:
+      - logger.log:
+          format: "Power limit %.2f%% (enabled: %d)"
+          args: [level, enabled]
