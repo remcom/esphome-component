@@ -180,3 +180,11 @@ esphome compile tests/components/grid_meter/test.host.yaml
 tests/components/grid_meter/.esphome/build/grid-meter-host/.pioenvs/grid-meter-host/program &
 pytest tests/grid_meter/test_grid_meter.py --device-ip=127.0.0.1 --device-port=5020 -v
 ```
+
+Behaviour that needs changing inputs is tested against `test-dynamic.host.yaml` (port 5022), whose sensors read their values from a control file (`$ESPHOME_TEST_CTL`, see `tests/components/common/test_ctl.h`):
+
+```bash
+esphome compile tests/components/grid_meter/test-dynamic.host.yaml
+ESPHOME_TEST_CTL=/tmp/grid_meter.ctl tests/components/grid_meter/.esphome/build/grid-meter-dynamic-host/.pioenvs/grid-meter-dynamic-host/program &
+pytest tests/grid_meter/test_dynamic.py --device-ip=127.0.0.1 --device-port=5022 --ctl-file=/tmp/grid_meter.ctl -v
+```

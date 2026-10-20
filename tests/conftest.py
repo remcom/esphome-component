@@ -15,6 +15,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--device-port", default=502, type=int, help="Modbus TCP port (default 502)"
     )
     parser.addoption(
+        "--ctl-file",
+        default=None,
+        help="Control file of a test-dynamic.host.yaml binary ($ESPHOME_TEST_CTL it was "
+        "started with); lets tests change sensor values at runtime",
+    )
+    parser.addoption(
         "--allow-writes",
         action="store_true",
         default=False,
@@ -34,6 +40,40 @@ def client(request: pytest.FixtureRequest) -> ModbusTcpClient:
         pytest.fail(f"Cannot connect to Modbus TCP server at {ip}:{port}")
     yield c
     c.close()
+
+
+class SensorControl:
+    """Writes the control file read by tests/components/common/test_ctl.h."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.values: dict[str, str] = {}
+
+    def set(self, **values: float | str) -> None:
+        """Override sensors: a number, "nan", or "skip" (stop publishing)."""
+        self.values.update({k: str(v) for k, v in values.items()})
+        self._write()
+
+    def reset(self) -> None:
+        self.values.clear()
+        self._write()
+
+    def _write(self) -> None:
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text("".join(f"{k}={v}\n" for k, v in self.values.items()))
+        tmp.replace(self.path)  # atomic: the device never sees a half-written file
+
+
+@pytest.fixture
+def ctl(request: pytest.FixtureRequest):
+    """Sensor control for a test-dynamic host build; reset to defaults afterwards."""
+    path = request.config.getoption("--ctl-file")
+    if path is None:
+        pytest.skip("--ctl-file not provided")
+    control = SensorControl(Path(path))
+    control.reset()
+    yield control
+    control.reset()
 
 
 @pytest.fixture

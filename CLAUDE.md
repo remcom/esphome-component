@@ -22,8 +22,8 @@ docs/
   sunspec.md
 tests/
   conftest.py        # --device-ip / --device-port / --allow-writes, `client`, `raw_request`, `load_component` fixtures
-  grid_meter/        # test_schema.py, test_grid_meter.py
-  sunspec/           # test_schema.py, test_sunspec.py
+  grid_meter/        # test_schema.py, test_grid_meter.py, test_dynamic.py
+  sunspec/           # test_schema.py, test_sunspec.py, test_dynamic.py
   components/        # ESPHome compile-test configs (ESPHome's tests/components layout)
     common/          # per-platform base: esp32-idf, esp32-ard, esp8266-ard, rp2040-ard, host
     <name>/          # common.yaml + test[-variant].<platform>.yaml
@@ -49,6 +49,8 @@ pytest -k schema -v                                             # all schema tes
 esphome compile tests/components/<name>/test.esp32-idf.yaml     # compile test
 pytest tests/<component>/ --device-ip=<DEVICE_IP> -v            # integration tests against a flashed device
 ```
+
+`test_dynamic.py` tests need changing sensor inputs: they run against `test-dynamic.host.yaml` (grid_meter port 5022, sunspec port 5023), whose template sensors read `$ESPHOME_TEST_CTL` via `tests/components/common/test_ctl.h`; tests drive it through the `ctl` fixture (`--ctl-file`) and skip without it.
 
 Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
 

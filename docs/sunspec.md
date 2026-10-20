@@ -198,3 +198,11 @@ esphome compile tests/components/sunspec/test-number.host.yaml
 tests/components/sunspec/.esphome/build/sunspec-number-host/.pioenvs/sunspec-number-host/program &
 pytest tests/sunspec/test_sunspec.py --device-ip=127.0.0.1 --device-port=5021 --allow-writes -v
 ```
+
+Behaviour that needs changing inputs is tested against `test-dynamic.host.yaml` (port 5023), whose sensors read their values from a control file (`$ESPHOME_TEST_CTL`, see `tests/components/common/test_ctl.h`):
+
+```bash
+esphome compile tests/components/sunspec/test-dynamic.host.yaml
+ESPHOME_TEST_CTL=/tmp/sunspec.ctl tests/components/sunspec/.esphome/build/sunspec-dynamic-host/.pioenvs/sunspec-dynamic-host/program &
+pytest tests/sunspec/test_dynamic.py --device-ip=127.0.0.1 --device-port=5023 --ctl-file=/tmp/sunspec.ctl -v
+```

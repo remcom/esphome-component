@@ -1,0 +1,64 @@
+substitutions:
+  device_name: sunspec-dynamic-host
+
+packages:
+  base: !include ../common/host.yaml
+
+# Sensor values driven by the control file ($ESPHOME_TEST_CTL, see ../common/test_ctl.h) so
+# tests/sunspec/test_dynamic.py can silence sensors at runtime. Defaults match common.yaml.
+# Short stale_timeout keeps the staleness tests fast.
+esphome:
+  includes:
+    - ../common/test_ctl.h
+
+sensor:
+  - platform: template
+    id: ac_power
+    lambda: return test_ctl("ac_power", 2500.0f);
+    update_interval: 1s
+  - platform: template
+    id: ac_voltage
+    lambda: return test_ctl("ac_voltage", 231.4f);
+    update_interval: 1s
+  - platform: template
+    id: ac_frequency
+    lambda: return test_ctl("ac_frequency", 50.01f);
+    update_interval: 1s
+  - platform: template
+    id: inverter_temp
+    lambda: return test_ctl("temperature", 41.5f);
+    update_interval: 1s
+  - platform: template
+    id: energy_total
+    lambda: return test_ctl("energy_total", 12345.5f);
+    update_interval: 1s
+  - platform: template
+    id: dc_power
+    lambda: return test_ctl("dc_power", 2600.0f);
+    update_interval: 1s
+  - platform: template
+    id: dc_voltage
+    lambda: return test_ctl("dc_voltage", 380.2f);
+    update_interval: 1s
+  - platform: template
+    id: dc_current
+    lambda: return test_ctl("dc_current", 6.84f);
+    update_interval: 1s
+
+sunspec:
+  - id: sunspec_server
+    port: 5023
+    manufacturer: Solis
+    model: S6-GR1P3K-M
+    serial_number: "TEST0001"
+    version: "1.0.0"
+    rated_power: 3000
+    ac_power: ac_power
+    ac_voltage: ac_voltage
+    ac_frequency: ac_frequency
+    temperature: inverter_temp
+    energy_total: energy_total
+    dc_power: dc_power
+    dc_voltage: dc_voltage
+    dc_current: dc_current
+    stale_timeout: 4s
