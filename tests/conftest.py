@@ -1,6 +1,8 @@
+from collections.abc import Callable
 import importlib.util
 from pathlib import Path
 import socket
+import sys
 from types import ModuleType
 
 from pymodbus.client import ModbusTcpClient
@@ -21,6 +23,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Run tests that send power-limit commands. On a device with write-back "
         "configured these reach the real inverter.",
     )
+    parser.addoption(
+        "--aqara-fp2-binary",
+        default=None,
+        help="Host build of tests/components/aqara_fp2/test.host.yaml for the aqara_fp2 "
+        "integration tests",
+    )
 
 
 @pytest.fixture(scope="module")
@@ -37,7 +45,9 @@ def client(request: pytest.FixtureRequest) -> ModbusTcpClient:
 
 
 @pytest.fixture
-def raw_request(client: ModbusTcpClient, request: pytest.FixtureRequest):
+def raw_request(
+    client: ModbusTcpClient, request: pytest.FixtureRequest
+) -> Callable[..., bytes]:
     """Send a raw Modbus TCP frame on a fresh connection; returns the reply bytes.
 
     For malformed requests that pymodbus refuses to build. Returns b"" when the
@@ -64,15 +74,23 @@ def allow_writes(request: pytest.FixtureRequest) -> None:
 
 
 def _load_component(name: str) -> ModuleType:
-    """Import components/<name>/__init__.py without needing it on sys.path."""
+    """Import components/<name>/__init__.py without needing it on sys.path.
+
+    The package is registered in sys.modules, so its platform modules (which use relative
+    imports) can then be loaded with importlib.import_module(f"components.{name}.<platform>").
+    """
+    directory = REPO_ROOT / "components" / name
     spec = importlib.util.spec_from_file_location(
-        f"components.{name}", REPO_ROOT / "components" / name / "__init__.py"
+        f"components.{name}",
+        directory / "__init__.py",
+        submodule_search_locations=[str(directory)],
     )
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
 @pytest.fixture
-def load_component():
+def load_component() -> Callable[[str], ModuleType]:
     return _load_component

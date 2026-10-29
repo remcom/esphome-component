@@ -1,0 +1,30 @@
+# Zones only: no entity platforms (so no binary_sensor/sensor code), no accelerometer and no i2c bus
+substitutions:
+  device_name: aqara-fp2-minimal-esp32-idf
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 890000
+
+aqara_fp2:
+  zones:
+    - grid: |-
+        X X X X X X X . . . . . . .
+        X X X X X X X . . . . . . .
+        X X X X X X X . . . . . . .
+        X X X X X X X . . . . . . .
+        X X X X X X X . . . . . . .
+        X X X X X X X . . . . . . .
+        X X X X X X X . . . . . . .
+        . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . .
+        . . . . . . . . . . . . . .

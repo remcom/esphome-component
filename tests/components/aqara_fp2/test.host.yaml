@@ -1,0 +1,21 @@
+# Radar only (host I2C is Linux-only). Also the target of tests/aqara_fp2/test_aqara_fp2.py, which
+# acts as the radar on a pseudo-terminal linked at /tmp/aqara-fp2-radar. The host UART supports only
+# standard baud rates, so the radar baud rate is not enforced on host.
+substitutions:
+  device_name: aqara-fp2-host
+
+packages:
+  base: !include ../common/host.yaml
+  aqara_fp2: !include common.yaml
+
+# Entity states are logged at VERBOSE; the integration test reads them from the log.
+logger:
+  level: VERBOSE
+
+uart:
+  id: uart_bus
+  port: /tmp/aqara-fp2-radar
+  baud_rate: 115200
+
+aqara_fp2:
+  radar_timeout: 3s

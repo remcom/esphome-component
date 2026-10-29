@@ -128,6 +128,7 @@ jobs:
         run: |
           esphome compile tests/components/grid_meter/test.host.yaml
           esphome compile tests/components/sunspec/test-number.host.yaml
+          esphome compile tests/components/aqara_fp2/test.host.yaml
       - name: Start host binaries
         run: |
           tests/components/grid_meter/.esphome/build/grid-meter-host/.pioenvs/grid-meter-host/program > grid_meter.log 2>&1 &
@@ -139,6 +140,8 @@ jobs:
           sleep 3
       - run: pytest tests/grid_meter/test_grid_meter.py --device-ip=127.0.0.1 --device-port=5020 -v
       - run: pytest tests/sunspec/test_sunspec.py --device-ip=127.0.0.1 --device-port=5021 --allow-writes -v
+      # Starts the binary itself, with a fake radar on a pseudo-terminal
+      - run: pytest tests/aqara_fp2/test_aqara_fp2.py --aqara-fp2-binary=tests/components/aqara_fp2/.esphome/build/aqara-fp2-host/.pioenvs/aqara-fp2-host/program -v
       - name: Device logs
         if: always()
         run: cat grid_meter.log sunspec.log

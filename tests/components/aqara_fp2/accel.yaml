@@ -1,0 +1,21 @@
+# Accelerometer, merged into the `aqara_fp2:` block of common.yaml. The i2c bus `i2c_bus` comes
+# from the platform file.
+aqara_fp2:
+  accel:
+    i2c_id: i2c_bus
+    address: 0x27
+
+binary_sensor:
+  - platform: aqara_fp2
+    vibration:
+      name: Vibration
+
+sensor:
+  - platform: aqara_fp2
+    tilt_angle:
+      name: Tilt angle
+
+text_sensor:
+  - platform: aqara_fp2
+    orientation:
+      name: Orientation
