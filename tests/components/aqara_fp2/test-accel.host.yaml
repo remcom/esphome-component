@@ -1,4 +1,5 @@
 # linux-only: host I2C is only supported on Linux (script/clang-tidy.sh skips this file elsewhere).
+# esphome>=2026.6.0: host I2C was added in 2026.6.0 (the min-version CI job skips this file).
 # Lets clang-tidy analyse the accelerometer code, which is only compiled when `accel:` is configured.
 substitutions:
   device_name: aqara-fp2-accel-host

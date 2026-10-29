@@ -198,4 +198,4 @@ Runs ESPHome on an Aqara FP2 mmWave presence sensor. `FP2Component` (`Component`
 - Accelerometer entities (`vibration`, `tilt_angle`, `orientation`) live on the `aqara_fp2` platforms; `require_accel_for()` resolves `aqara_fp2_accel_id` only when one of them is configured.
 - Grids: 14×14 ASCII → 40-byte map, rows 0–13, columns 2–15 of the radar's 20×16 map (`parse_ascii_grid()`).
 - `FINAL_VALIDATE_SCHEMA` requires TX+RX, 8N1 and 890000 baud (baud not enforced on host).
-- `test-accel.host.yaml` starts with `# linux-only`: host I2C only validates on Linux, so `script/clang-tidy.sh` skips it elsewhere (CI runs on Linux).
+- `test-accel.host.yaml` starts with `# linux-only` (host I2C only validates on Linux, so `script/clang-tidy.sh` skips it elsewhere) and `# esphome>=2026.6.0` (host I2C is newer than the minimum version, so the min-version CI job skips it). The accelerometer itself works from 2026.4.0 on ESP32.

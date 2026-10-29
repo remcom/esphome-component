@@ -187,7 +187,9 @@ class FakeRadar:
 
     def expect_silence(self, duration: float) -> None:
         frame = self.read_frame(duration)
-        assert frame is None, f"unexpected frame: op {frame.op}, attr 0x{frame.attr:04X}"
+        assert frame is None, (
+            f"unexpected frame: op {frame.op}, attr 0x{frame.attr:04X}"
+        )
 
     def wait_log(self, pattern: str, timeout: float = 2.0) -> re.Match:
         regex = re.compile(pattern)
@@ -275,7 +277,9 @@ def test_location_report_publishes_targets(radar: FakeRadar) -> None:
         record += value.to_bytes(2, "big", signed=True)
     record += bytes(5)  # snr, classifier, posture, active
     blob = bytes([1]) + record
-    radar.report(ATTR_LOCATION_TRACKING_DATA, TYPE_BINARY, len(blob).to_bytes(2, "big") + blob)
+    radar.report(
+        ATTR_LOCATION_TRACKING_DATA, TYPE_BINARY, len(blob).to_bytes(2, "big") + blob
+    )
 
     assert radar.expect_frame().op == OP_ACK
     radar.wait_log(r"'Target 1 X' >> 100 mm")
@@ -286,7 +290,9 @@ def test_location_report_publishes_targets(radar: FakeRadar) -> None:
 
 
 def test_corrupt_frame_ignored(radar: FakeRadar) -> None:
-    frame = bytearray(build_frame(OP_REPORT, attribute(ATTR_PRESENCE_DETECT, TYPE_UINT8, b"\x01")))
+    frame = bytearray(
+        build_frame(OP_REPORT, attribute(ATTR_PRESENCE_DETECT, TYPE_UINT8, b"\x01"))
+    )
     frame[-1] ^= 0xFF
     os.write(radar.master, frame)
     radar.expect_silence(0.5)

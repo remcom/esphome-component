@@ -107,6 +107,11 @@ jobs:
       - run: pip install "esphome==$ESPHOME_MIN_VERSION"
       - run: |
           for config in tests/components/*/test*.host.yaml; do
+            # Configs that need a newer ESPHome than the minimum carry an "# esphome>=X" line
+            if grep -q "^# esphome>=" "$config"; then
+              echo "Skipping $config: $(grep "^# esphome>=" "$config")"
+              continue
+            fi
             esphome compile "$config"
           done
 
