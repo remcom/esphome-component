@@ -33,7 +33,7 @@ static constexpr uint32_t RX_BYTE_TIMEOUT_MS = 50;
 static constexpr size_t REPORT_LOG_BYTES = 8;
 
 // Configuration steps, see build_config_command_().
-static constexpr uint8_t ATTRIBUTE_STEPS = 14;
+static constexpr uint8_t ATTRIBUTE_STEPS = 15;
 static constexpr uint8_t GRID_STEPS = 3;
 static constexpr uint8_t ZONE_ACTIVATION_LIST_SIZE = 32;
 
@@ -209,9 +209,14 @@ bool FP2Component::build_config_command_(uint8_t step, FP2Command &cmd) const {
       case 12:
         fill_uint8(cmd, AttrId::ATTR_ID_THERMO_DATA, DataType::DATA_TYPE_UINT8, 1);
         break;
-      default:
+      case 13:
         fill_uint8(cmd, AttrId::ATTR_ID_LOCATION_REPORT_ENABLE, DataType::DATA_TYPE_UINT8,
                    this->location_reporting_active_ ? 1 : 0);
+        break;
+      // The radar sends no presence or motion reports until the work mode is written; the stock
+      // firmware writes 3.
+      default:
+        fill_uint8(cmd, AttrId::ATTR_ID_WORK_MODE, DataType::DATA_TYPE_UINT8, 3);
         break;
     }
     return true;

@@ -94,6 +94,7 @@ enum class AttrId : uint16_t {
   ATTR_ID_LOCATION_REPORT_ENABLE = 0x0112,       // enable/disable target location reports
   ATTR_ID_ZONE_MAP = 0x0114,                     // zone area map (1B id + 40B)
   ATTR_ID_DETECT_ZONE_MOTION = 0x0115,           // per-zone motion report
+  ATTR_ID_WORK_MODE = 0x0116,                    // enables presence/motion reports
   ATTR_ID_LOCATION_TRACKING_DATA = 0x0117,       // per-target location report
   ATTR_ID_ANGLE_SENSOR_DATA = 0x0120,            // radar query: mounting tilt angle
   ATTR_ID_LEFT_RIGHT_REVERSE = 0x0122,           // left/right swap

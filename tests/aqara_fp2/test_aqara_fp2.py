@@ -68,6 +68,7 @@ EXPECTED_CONFIG = [
     0x0138,  # thermo enable
     0x0141,  # thermo data
     ATTR_LOCATION_REPORT_ENABLE,
+    0x0116,  # work mode
     0x0110,  # interference map
     ATTR_ZONE_MAP,
     0x0151,  # zone 1 sensitivity
