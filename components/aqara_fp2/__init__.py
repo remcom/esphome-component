@@ -29,6 +29,7 @@ CONF_ZONES = "zones"
 CONF_GRID = "grid"
 CONF_PRESENCE = "presence"
 CONF_RADAR_TIMEOUT = "radar_timeout"
+CONF_MOTION_TIMEOUT = "motion_timeout"
 
 # The stock FP2 firmware talks to the radar at 890000 baud, 8N1.
 RADAR_BAUD_RATE = 890000
@@ -145,6 +146,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(
                 CONF_RADAR_TIMEOUT, default="60s"
             ): cv.positive_time_period_milliseconds,
+            cv.Optional(
+                CONF_MOTION_TIMEOUT, default="30s"
+            ): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_ZONES): cv.All(
                 cv.ensure_list(ZONE_SCHEMA), cv.Length(max=MAX_ZONES)
             ),
@@ -197,6 +201,7 @@ async def to_code(config: ConfigType) -> None:
     cg.add(var.set_left_right_reverse(config[CONF_LEFT_RIGHT_REVERSE]))
     cg.add(var.set_presence_sensitivity(config[CONF_PRESENCE_SENSITIVITY]))
     cg.add(var.set_radar_timeout(config[CONF_RADAR_TIMEOUT].total_milliseconds))
+    cg.add(var.set_motion_timeout(config[CONF_MOTION_TIMEOUT].total_milliseconds))
 
     if (grid := config.get(CONF_INTERFERENCE_GRID)) is not None:
         cg.add(var.set_interference_grid(grid))

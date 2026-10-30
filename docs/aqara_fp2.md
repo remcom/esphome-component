@@ -22,7 +22,9 @@ external_components:
 
 ## Configuration
 
-The radar runs at 890000 baud, 8N1; the `uart` bus must have both TX and RX pins.
+The radar runs at 890000 baud, 8N1; the `uart` bus must have both TX and RX pins. At that speed
+the default 256-byte receive buffer fills in 3 ms, so radar frames are lost whenever the main loop
+stalls (an I2C timeout alone blocks it for 100 ms); give the bus a larger `rx_buffer_size`.
 
 ```yaml
 uart:
@@ -30,6 +32,7 @@ uart:
   tx_pin: GPIO17
   rx_pin: GPIO16
   baud_rate: 890000
+  rx_buffer_size: 4096
 
 i2c:
   id: internal_i2c
@@ -85,6 +88,7 @@ The pin numbers above are placeholders; use the ones of your FP2 board.
 | `exit_grid` | — | Grid of entrance/exit cells |
 | `edge_grid` | — | Grid marking the detection boundary |
 | `zones` | — | Up to 30 detection zones, each with `grid` and `sensitivity` (default `medium`). Zone entities go on the `binary_sensor` platform as `zone_1`, `zone_2`, … in the order of this list |
+| `motion_timeout` | `30s` | Turn the `motion` binary sensors off when no movement event arrived for this long, see [Presence and motion](#presence-and-motion); `0s` keeps them on until leave or empty |
 | `radar_timeout` | `60s` | Mark the radar lost when it sends nothing for this long, see [Radar watchdog](#radar-watchdog); `0s` disables |
 | `accel` | — | On-board accelerometer: `i2c_id`, `address` (default `0x27`). Sampled every 100 ms |
 
@@ -112,6 +116,11 @@ binary_sensor:
     vibration:          # accelerometer
       name: Vibration
 
+event:
+  - platform: aqara_fp2
+    movement:           # event types: enter, leave, approach, away
+      name: Movement
+
 sensor:
   - platform: aqara_fp2
     target_count:
@@ -138,6 +147,19 @@ switch:
     location_report:
       name: Report targets
 ```
+
+### Presence and motion
+
+`presence` and the zone `presence` sensors are the radar's own occupancy states. The radar has no
+motion state: it reports movement events (someone enters, leaves, approaches or walks away). The
+`movement` event entity fires on each of them. The `motion` binary sensor is derived from those
+events: it turns on with every event except leave, and off on a leave event, when `presence`
+clears, or when no event arrived for `motion_timeout`. Zone `motion` works the same way with the
+radar's per-zone events, whose meanings are not decoded yet: any zone event counts as motion, and
+it turns off when the zone's presence clears or after `motion_timeout`.
+
+The event names follow the Aqara FP1, which numbers its events the same way; only enter (0),
+leave (1), approach (6) and away (7) have been seen. Other values are logged at debug level.
 
 Target positions, `target_count` and `has_target` come from location reports: while location
 reporting is off they are unknown. Without a `location_report` switch it is always on; with one,

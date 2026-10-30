@@ -5,6 +5,7 @@ aqara_fp2:
   mounting_position: left_corner
   left_right_reverse: false
   presence_sensitivity: medium
+  motion_timeout: 1s
   interference_grid: |-
     . . . . . . . . . . . . . .
     . . . . . . . . . . . . . .
@@ -67,6 +68,15 @@ sensor:
         name: Target 1 Z
       speed:
         name: Target 1 speed
+
+event:
+  - platform: aqara_fp2
+    movement:
+      name: Movement
+      on_event:
+        - logger.log:
+            format: "Movement event %s"
+            args: [event_type.c_str()]
 
 text_sensor:
   - platform: aqara_fp2

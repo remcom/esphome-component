@@ -43,6 +43,7 @@ def test_minimal_config_accepted(schema: Callable[[ConfigType], ConfigType]) -> 
     assert result["presence_sensitivity"].enum_value == 2
     assert result["left_right_reverse"] is False
     assert result["radar_timeout"].total_milliseconds == 60000
+    assert result["motion_timeout"].total_milliseconds == 30000
     assert "accel" not in result
 
 

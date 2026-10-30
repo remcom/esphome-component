@@ -8,6 +8,7 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 
 namespace esphome::aqara_fp2 {
 
@@ -29,6 +30,11 @@ static constexpr uint8_t MAX_SENDS = 3;
 static constexpr uint32_t RESET_PULSE_MS = 100;
 // A frame takes about 1 ms at 890000 baud; a longer gap means bytes were lost.
 static constexpr uint32_t RX_BYTE_TIMEOUT_MS = 50;
+// Movement events of the MOTION_DETECT report, indexed by value; null for values not seen yet.
+// The names follow the Aqara FP1's presence events, which use the same numbering.
+static constexpr const char *MOVEMENT_EVENT_TYPES[] = {"enter", "leave", nullptr,    nullptr,
+                                                       nullptr, nullptr, "approach", "away"};
+static constexpr uint8_t MOVEMENT_LEAVE = 1;
 // Value bytes of a report shown in the debug log (enough for every non-blob report).
 static constexpr size_t REPORT_LOG_BYTES = 8;
 
@@ -119,6 +125,9 @@ void FP2Component::loop() {
   }
 
   this->check_radar_timeout_(now);
+#ifdef USE_BINARY_SENSOR
+  this->expire_motion_(now);
+#endif
   this->process_commands_(now);
 }
 
@@ -137,21 +146,18 @@ void FP2Component::start_configuration_() {
   }
 #endif
 #ifdef USE_BINARY_SENSOR
-  for (auto *sens : {this->presence_binary_sensor_, this->motion_binary_sensor_}) {
-    if (sens != nullptr) {
-      sens->publish_state(false);
-    }
+  if (this->presence_binary_sensor_ != nullptr) {
+    this->presence_binary_sensor_->publish_state(false);
   }
+  this->set_motion_(this->motion_binary_sensor_, this->motion_timer_, false);
   if (this->target_binary_sensor_ != nullptr && this->location_reporting_active_) {
     this->target_binary_sensor_->publish_state(false);
   }
-  for (const auto &zone : this->zones_) {
+  for (auto &zone : this->zones_) {
     if (zone.presence != nullptr) {
       zone.presence->publish_state(false);
     }
-    if (zone.motion != nullptr) {
-      zone.motion->publish_state(false);
-    }
+    this->set_motion_(zone.motion, zone.motion_timer, false);
   }
 #endif
 }
@@ -416,13 +422,15 @@ void FP2Component::publish_unknown_states_() {
       sens->invalidate_state();
     }
   }
-  for (const auto &zone : this->zones_) {
+  this->motion_timer_.active = false;
+  for (auto &zone : this->zones_) {
     if (zone.presence != nullptr) {
       zone.presence->invalidate_state();
     }
     if (zone.motion != nullptr) {
       zone.motion->invalidate_state();
     }
+    zone.motion_timer.active = false;
   }
 #endif
 #ifdef USE_SENSOR
@@ -588,29 +596,43 @@ void FP2Component::handle_report_(AttrId attr_id) {
   switch (attr_id) {
 #ifdef USE_BINARY_SENSOR
     case AttrId::ATTR_ID_PRESENCE_DETECT:
-      if (this->presence_binary_sensor_ != nullptr && len == 4 && payload[2] == 0x00) {
-        this->presence_binary_sensor_->publish_state(payload[3] != 0);
-      }
-      return;
-    case AttrId::ATTR_ID_MOTION_DETECT:
-      if (this->motion_binary_sensor_ != nullptr && len == 4 && payload[2] == 0x00) {
-        this->motion_binary_sensor_->publish_state(payload[3] != 0);
+      if (len == 4 && payload[2] == 0x00) {
+        const bool present = payload[3] != 0;
+        if (this->presence_binary_sensor_ != nullptr) {
+          this->presence_binary_sensor_->publish_state(present);
+        }
+        if (!present) {
+          this->set_motion_(this->motion_binary_sensor_, this->motion_timer_, false);
+        }
       }
       return;
     case AttrId::ATTR_ID_ZONE_PRESENCE:
     case AttrId::ATTR_ID_DETECT_ZONE_MOTION: {
-      // Payload: [attr 2][type 0x01][zone id][state]
+      // Payload: [attr 2][type 0x01][zone id][state]. Zone motion states are event flags that are
+      // not decoded yet: any of them counts as motion.
       if (len < 5 || payload[2] != 0x01 || payload[3] == 0 || payload[3] > this->zones_.size()) {
         return;
       }
-      const FP2Zone &zone = this->zones_[payload[3] - 1];
-      auto *sens = attr_id == AttrId::ATTR_ID_ZONE_PRESENCE ? zone.presence : zone.motion;
-      if (sens != nullptr) {
-        sens->publish_state(payload[4] != 0);
+      FP2Zone &zone = this->zones_[payload[3] - 1];
+      const bool state = payload[4] != 0;
+      if (attr_id == AttrId::ATTR_ID_DETECT_ZONE_MOTION) {
+        this->set_motion_(zone.motion, zone.motion_timer, state);
+        return;
+      }
+      if (zone.presence != nullptr) {
+        zone.presence->publish_state(state);
+      }
+      if (!state) {
+        this->set_motion_(zone.motion, zone.motion_timer, false);
       }
       return;
     }
 #endif
+    case AttrId::ATTR_ID_MOTION_DETECT:
+      if (len == 4 && payload[2] == 0x00) {
+        this->handle_movement_(payload[3]);
+      }
+      return;
 #ifdef USE_SENSOR
     case AttrId::ATTR_ID_TEMPERATURE:
       if (len == 5 && payload[2] == 0x01) {
@@ -662,6 +684,47 @@ void FP2Component::handle_location_report_() {
   }
 #endif
 }
+
+void FP2Component::handle_movement_(uint8_t value) {
+  const char *event_type = value < std::size(MOVEMENT_EVENT_TYPES) ? MOVEMENT_EVENT_TYPES[value] : nullptr;
+  if (event_type == nullptr) {
+    ESP_LOGD(TAG, "Unknown movement event %u", value);
+    return;
+  }
+#ifdef USE_EVENT
+  if (this->movement_event_ != nullptr) {
+    this->movement_event_->trigger(event_type);
+  }
+#endif
+#ifdef USE_BINARY_SENSOR
+  this->set_motion_(this->motion_binary_sensor_, this->motion_timer_, value != MOVEMENT_LEAVE);
+#endif
+}
+
+#ifdef USE_BINARY_SENSOR
+void FP2Component::set_motion_(binary_sensor::BinarySensor *sens, MotionTimer &timer, bool detected) {
+  timer.active = detected;
+  timer.last_event_ms = App.get_loop_component_start_time();
+  if (sens != nullptr) {
+    sens->publish_state(detected);
+  }
+}
+
+void FP2Component::expire_motion_(uint32_t now) {
+  if (this->motion_timeout_ms_ == 0) {
+    return;
+  }
+  auto expire = [this, now](binary_sensor::BinarySensor *sens, MotionTimer &timer) {
+    if (timer.active && now - timer.last_event_ms >= this->motion_timeout_ms_) {
+      this->set_motion_(sens, timer, false);
+    }
+  };
+  expire(this->motion_binary_sensor_, this->motion_timer_);
+  for (auto &zone : this->zones_) {
+    expire(zone.motion, zone.motion_timer);
+  }
+}
+#endif
 
 void FP2Component::handle_radar_query_(AttrId attr_id) {
   // Answered like the stock firmware: the orientation as UINT8, the tilt angle as UINT16.
@@ -718,10 +781,12 @@ void FP2Component::dump_config() {
                 "  Mounting position: %s\n"
                 "  Left/right reverse: %s\n"
                 "  Presence sensitivity: %s\n"
-                "  Radar timeout: %" PRIu32 " ms",
+                "  Radar timeout: %" PRIu32 " ms\n"
+                "  Motion timeout: %" PRIu32 " ms",
                 LOG_STR_ARG(MountingPositionStrings::get_log_str(this->mounting_position_, 0)),
                 YESNO(this->left_right_reverse_),
-                LOG_STR_ARG(SensitivityStrings::get_log_str(this->presence_sensitivity_, 0)), this->radar_timeout_ms_);
+                LOG_STR_ARG(SensitivityStrings::get_log_str(this->presence_sensitivity_, 0)), this->radar_timeout_ms_,
+                this->motion_timeout_ms_);
   LOG_PIN("  Reset pin: ", this->reset_pin_);
   for (size_t i = 0; i < this->zones_.size(); i++) {
     const FP2Zone &zone = this->zones_[i];
@@ -749,6 +814,11 @@ void FP2Component::dump_config() {
 #endif
 #ifdef USE_TEXT_SENSOR
   LOG_TEXT_SENSOR("  ", "Radar version", this->radar_version_text_sensor_);
+#endif
+#ifdef USE_EVENT
+  if (this->movement_event_ != nullptr) {
+    ESP_LOGCONFIG(TAG, "  Movement event: '%s'", this->movement_event_->get_name().c_str());
+  }
 #endif
 #ifdef USE_SWITCH
   LOG_SWITCH("  ", "Location report", this->location_report_switch_);

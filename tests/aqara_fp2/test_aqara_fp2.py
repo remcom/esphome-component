@@ -39,10 +39,12 @@ TYPE_UINT16 = 0x01
 TYPE_BINARY = 0x06
 
 ATTR_RADAR_SW_VERSION = 0x0102
+ATTR_MOTION_DETECT = 0x0103
 ATTR_PRESENCE_DETECT = 0x0104
 ATTR_MONITOR_MODE = 0x0105
 ATTR_LOCATION_REPORT_ENABLE = 0x0112
 ATTR_ZONE_MAP = 0x0114
+ATTR_DETECT_ZONE_MOTION = 0x0115
 ATTR_LOCATION_TRACKING_DATA = 0x0117
 ATTR_ANGLE_SENSOR_DATA = 0x0120
 ATTR_TEMPERATURE = 0x0128
@@ -198,12 +200,13 @@ class FakeRadar:
             f"unexpected frame: op {frame.op}, attr 0x{frame.attr:04X}"
         )
 
-    def wait_log(self, pattern: str, timeout: float = 2.0) -> re.Match:
+    def wait_log(self, pattern: str, timeout: float = 2.0, start: int = 0) -> re.Match:
+        """Wait for a log line matching `pattern`, looking from line `start` on."""
         regex = re.compile(pattern)
         deadline = time.monotonic() + timeout
         with self.log_changed:
             while True:
-                for line in self.log:
+                for line in self.log[start:]:
                     if match := regex.search(line):
                         return match
                 remaining = deadline - time.monotonic()
@@ -291,6 +294,58 @@ def test_reports_acknowledged_and_published(radar: FakeRadar) -> None:
     radar.report(ATTR_TEMPERATURE, TYPE_UINT16, (23).to_bytes(2, "big"))
     assert radar.expect_frame().op == OP_ACK
     radar.wait_log(r"'Radar temperature' >> 23")
+
+
+def test_movement_events_drive_motion(radar: FakeRadar) -> None:
+    """Movement events fire the event entity; motion goes on, and off on leave or timeout."""
+    radar.configure()
+
+    start = len(radar.log)
+    radar.report(ATTR_MOTION_DETECT, TYPE_UINT8, b"\x00")
+    assert radar.expect_frame().op == OP_ACK
+    radar.wait_log(r"Movement event enter", start=start)
+    radar.wait_log(r"'Motion' >> ON", start=start)
+    # motion_timeout is 1 s in common.yaml.
+    radar.wait_log(r"'Motion' >> OFF", start=start)
+
+    start = len(radar.log)
+    radar.report(ATTR_MOTION_DETECT, TYPE_UINT8, b"\x06")
+    radar.wait_log(r"Movement event approach", start=start)
+    radar.wait_log(r"'Motion' >> ON", start=start)
+    radar.report(ATTR_MOTION_DETECT, TYPE_UINT8, b"\x01")
+    radar.wait_log(r"Movement event leave", start=start)
+    radar.wait_log(r"'Motion' >> OFF", timeout=0.5, start=start)
+
+    start = len(radar.log)
+    radar.report(ATTR_MOTION_DETECT, TYPE_UINT8, b"\x03")
+    radar.wait_log(r"Unknown movement event 3", start=start)
+    assert "Movement event" not in "\n".join(radar.log[start:])
+
+
+def test_presence_cleared_clears_motion(radar: FakeRadar) -> None:
+    radar.configure()
+
+    start = len(radar.log)
+    radar.report(ATTR_MOTION_DETECT, TYPE_UINT8, b"\x07")
+    radar.wait_log(r"'Motion' >> ON", start=start)
+    radar.report(ATTR_PRESENCE_DETECT, TYPE_UINT8, b"\x00")
+    radar.wait_log(r"'Motion' >> OFF", timeout=0.5, start=start)
+
+
+def test_zone_motion_times_out(radar: FakeRadar) -> None:
+    radar.configure()
+
+    start = len(radar.log)
+    radar.report(ATTR_DETECT_ZONE_MOTION, TYPE_UINT16, b"\x01\x04")
+    assert radar.expect_frame().op == OP_ACK
+    radar.wait_log(r"'Sofa motion' >> ON", start=start)
+    radar.wait_log(r"'Sofa motion' >> OFF", start=start)
+
+    start = len(radar.log)
+    radar.report(ATTR_DETECT_ZONE_MOTION, TYPE_UINT16, b"\x01\x01")
+    radar.wait_log(r"'Sofa motion' >> ON", start=start)
+    radar.report(ATTR_ZONE_PRESENCE, TYPE_UINT16, b"\x01\x00")
+    radar.wait_log(r"'Sofa motion' >> OFF", timeout=0.5, start=start)
 
 
 def test_location_report_publishes_targets(radar: FakeRadar) -> None:

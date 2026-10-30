@@ -14,6 +14,9 @@
 #ifdef USE_TEXT_SENSOR
 #include "esphome/components/text_sensor/text_sensor.h"
 #endif
+#ifdef USE_EVENT
+#include "esphome/components/event/event.h"
+#endif
 #ifdef USE_SWITCH
 #include "esphome/components/switch/switch.h"
 #endif
@@ -134,6 +137,13 @@ struct FP2Command {
   uint8_t data_len;
 };
 
+// Motion derived from the radar's movement events: on with an event, off on leave, when the
+// presence clears, or after the motion timeout without events.
+struct MotionTimer {
+  uint32_t last_event_ms{0};
+  bool active{false};
+};
+
 // A user-defined detection zone. Its radar zone id is its index + 1.
 struct FP2Zone {
   GridMap grid;
@@ -141,6 +151,7 @@ struct FP2Zone {
 #ifdef USE_BINARY_SENSOR
   binary_sensor::BinarySensor *presence{nullptr};
   binary_sensor::BinarySensor *motion{nullptr};
+  MotionTimer motion_timer{};
 #endif
 };
 
@@ -177,6 +188,10 @@ class FP2Component : public Component, public uart::UARTDevice {
   void set_left_right_reverse(bool reverse) { this->left_right_reverse_ = reverse; }
   void set_presence_sensitivity(uint8_t sensitivity) { this->presence_sensitivity_ = sensitivity; }
   void set_radar_timeout(uint32_t timeout_ms) { this->radar_timeout_ms_ = timeout_ms; }
+  void set_motion_timeout(uint32_t timeout_ms) { this->motion_timeout_ms_ = timeout_ms; }
+#ifdef USE_EVENT
+  void set_movement_event(event::Event *evt) { this->movement_event_ = evt; }
+#endif
 #ifdef USE_AQARA_FP2_ACCEL
   void set_accel(FP2Accel *accel) { this->accel_ = accel; }
 #endif
@@ -257,6 +272,11 @@ class FP2Component : public Component, public uart::UARTDevice {
   void handle_report_(AttrId attr_id);
   void handle_location_report_();
   void handle_radar_query_(AttrId attr_id);
+  void handle_movement_(uint8_t value);
+#ifdef USE_BINARY_SENSOR
+  void set_motion_(binary_sensor::BinarySensor *sens, MotionTimer &timer, bool detected);
+  void expire_motion_(uint32_t now);
+#endif
   // Target sensors, target count and has_target: everything that comes from location reports.
   void publish_location_unknown_();
 
@@ -269,6 +289,13 @@ class FP2Component : public Component, public uart::UARTDevice {
   bool left_right_reverse_{false};
   uint8_t presence_sensitivity_{2};
   uint32_t radar_timeout_ms_{0};
+  uint32_t motion_timeout_ms_{0};
+#ifdef USE_BINARY_SENSOR
+  MotionTimer motion_timer_{};
+#endif
+#ifdef USE_EVENT
+  event::Event *movement_event_{nullptr};
+#endif
 
   GridMap interference_grid_{};
   GridMap exit_grid_{};
