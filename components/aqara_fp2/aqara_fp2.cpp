@@ -28,6 +28,9 @@ static constexpr uint32_t ACK_TIMEOUT_MS = 500;
 // A write is sent this many times before the radar is considered to have rejected it.
 static constexpr uint8_t MAX_SENDS = 3;
 static constexpr uint32_t RESET_PULSE_MS = 100;
+// The radar asks for its tilt once, about a second after it starts, and keeps the first answer; the
+// boot reset waits this long at most for the accelerometer's first reading.
+static constexpr uint32_t ACCEL_WAIT_MS = 5000;
 // A frame takes about 1 ms at 890000 baud; a longer gap means bytes were lost.
 static constexpr uint32_t RX_BYTE_TIMEOUT_MS = 50;
 // Movement events of the MOTION_DETECT report, indexed by value; null for values not seen yet.
@@ -98,6 +101,13 @@ void FP2Component::setup() {
   }
 #endif
   this->last_rx_ms_ = millis();
+  this->setup_ms_ = this->last_rx_ms_;
+#ifdef USE_AQARA_FP2_ACCEL
+  if (this->accel_ != nullptr && this->reset_pin_ != nullptr) {
+    this->reset_pending_ = true;  // see ACCEL_WAIT_MS; loop() resets once the accelerometer is ready
+    return;
+  }
+#endif
   this->perform_reset_();
 }
 
@@ -105,6 +115,7 @@ void FP2Component::perform_reset_() {
   if (this->reset_pin_ == nullptr) {
     return;
   }
+  ESP_LOGD(TAG, "Resetting radar");
   this->reset_pin_->setup();
   this->reset_pin_->digital_write(false);
   this->set_timeout(RESET_PULSE_MS, [this]() { this->reset_pin_->digital_write(true); });
@@ -112,6 +123,15 @@ void FP2Component::perform_reset_() {
 
 void FP2Component::loop() {
   const uint32_t now = App.get_loop_component_start_time();
+#ifdef USE_AQARA_FP2_ACCEL
+  if (this->reset_pending_ && (this->accel_->has_reading() || now - this->setup_ms_ >= ACCEL_WAIT_MS)) {
+    if (!this->accel_->has_reading()) {
+      ESP_LOGW(TAG, "Resetting the radar without an accelerometer reading; its mounting tilt will be wrong");
+    }
+    this->reset_pending_ = false;
+    this->perform_reset_();
+  }
+#endif
   if (this->available() > 0) {
     this->rx_last_byte_ms_ = now;
     uint8_t byte;
@@ -405,6 +425,7 @@ void FP2Component::revert_location_reporting_() {
 
 void FP2Component::restart_radar() {
   ESP_LOGI(TAG, "Restarting radar");
+  this->reset_pending_ = false;
   this->config_state_ = ConfigState::CONFIG_STATE_WAIT_HEARTBEAT;
   this->inflight_active_ = false;
   this->queue_count_ = 0;
@@ -582,7 +603,8 @@ void FP2Component::handle_report_(AttrId attr_id) {
 
   // Every report except the heartbeat must be acknowledged; ACKs jump the queue.
   if (attr_id == AttrId::ATTR_ID_RADAR_SW_VERSION) {
-    if (this->config_state_ == ConfigState::CONFIG_STATE_WAIT_HEARTBEAT) {
+    // A heartbeat from before the boot reset is ignored: the reset would cut the configuration off.
+    if (this->config_state_ == ConfigState::CONFIG_STATE_WAIT_HEARTBEAT && !this->reset_pending_) {
       this->start_configuration_();
     }
 #ifdef USE_TEXT_SENSOR

@@ -152,6 +152,7 @@ void FP2Accel::process_samples_(int32_t acc_x, int32_t acc_y, int32_t acc_z, int
 
   // Output angle: 0 when vertical (Z pointing up/down), 90 when horizontal.
   this->output_angle_z_ = 90 - std::abs(angle_z);
+  this->has_reading_ = true;
 
   // Orientation classification, with the stock firmware's angle windows (bounds inclusive).
   Orientation current = Orientation::ORIENTATION_INVALID;

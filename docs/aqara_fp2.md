@@ -80,7 +80,7 @@ The pin numbers above are placeholders; use the ones of your FP2 board.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `uart_id` | — | UART bus connected to the radar (890000 baud, TX and RX required) |
-| `reset_pin` | — | Radar reset pin; pulsed low for 100 ms at boot |
+| `reset_pin` | — | Radar reset pin; pulsed low for 100 ms at boot (with `accel:`, once the accelerometer has its first reading) |
 | `mounting_position` | `wall` | `wall`, `left_corner` or `right_corner` |
 | `left_right_reverse` | `false` | Swap left and right in the radar's coordinate system |
 | `presence_sensitivity` | `medium` | Global presence sensitivity: `low`, `medium` or `high` |
@@ -187,6 +187,12 @@ half-configured radar. Nothing is sent before the first heartbeat.
 Reports from the radar are acknowledged and published. When the radar asks for the device
 orientation and tilt, the component answers right away with the accelerometer's readings, or
 "upright, 0°" when no `accel:` is configured.
+
+The radar asks for its tilt only once, about a second after it starts, and keeps that answer: with a
+wrong tilt it sends no presence or motion reports and its target coordinates are off, while target
+tracking itself seems to work. With `accel:` and `reset_pin`, the boot reset therefore waits until
+the accelerometer has its first reading (at most 5 s). The `restart_radar` button runs the start-up
+again.
 
 ### Radar watchdog
 

@@ -61,6 +61,8 @@ class FP2Accel : public Component, public i2c::I2CDevice {
 
   // Accessors consumed by FP2Component when the radar asks for its mounting orientation.
   Orientation get_orientation() const { return this->stable_orientation_; }
+  // False until the first window of samples has been processed (orientation and tilt are not known yet).
+  bool has_reading() const { return this->has_reading_; }
   uint8_t get_output_angle_z() const { return static_cast<uint8_t>(this->output_angle_z_); }
 
  protected:
@@ -81,6 +83,7 @@ class FP2Accel : public Component, public i2c::I2CDevice {
   Orientation stable_orientation_{Orientation::ORIENTATION_INVALID};
   Orientation raw_orientation_{Orientation::ORIENTATION_INVALID};
   int16_t output_angle_z_{0};
+  bool has_reading_{false};
   uint8_t debounce_invalid_{0};
   uint8_t debounce_side_{0};
   uint8_t debounce_side_rev_{0};

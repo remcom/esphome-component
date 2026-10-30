@@ -328,6 +328,8 @@ class FP2Component : public Component, public uart::UARTDevice {
   // Last state the radar acknowledged; a failed write returns to it.
   bool location_reporting_confirmed_{false};
   bool radar_lost_{false};
+  bool reset_pending_{false};  // boot reset waits for the accelerometer
+  uint32_t setup_ms_{0};
   uint32_t last_rx_ms_{0};
 
   // Outgoing ring buffer plus the write currently awaiting an ACK, held separately so the queue
