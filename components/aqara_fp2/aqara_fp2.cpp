@@ -127,12 +127,21 @@ void FP2Component::start_configuration_() {
   this->config_state_ = ConfigState::CONFIG_STATE_SENDING;
   this->config_step_ = 0;
 
-  // The radar reports changes only, so start from its post-reset state.
+  // The radar reports changes only, so start from its post-reset state. Location entities stay
+  // unknown while location reporting is off.
+#ifdef USE_SENSOR
+  if (this->location_reporting_active_) {
+    this->target_count_sensor_.publish(0);
+  }
+#endif
 #ifdef USE_BINARY_SENSOR
-  for (auto *sens : {this->presence_binary_sensor_, this->motion_binary_sensor_, this->target_binary_sensor_}) {
+  for (auto *sens : {this->presence_binary_sensor_, this->motion_binary_sensor_}) {
     if (sens != nullptr) {
       sens->publish_state(false);
     }
+  }
+  if (this->target_binary_sensor_ != nullptr && this->location_reporting_active_) {
+    this->target_binary_sensor_->publish_state(false);
   }
   for (const auto &zone : this->zones_) {
     if (zone.presence != nullptr) {
@@ -359,20 +368,24 @@ void FP2Component::command_failed_() {
   } else {
     this->status_set_warning(LOG_STR("Radar did not acknowledge a command"));
     if (this->inflight_.attr_id == AttrId::ATTR_ID_LOCATION_REPORT_ENABLE) {
-      this->location_report_write_failed_(this->inflight_.data[3] != 0);
+      this->revert_location_reporting_();
     }
   }
 }
 
-// The radar did not take the new location report state: go back to the old one, so the switch,
-// this component and the radar agree.
-void FP2Component::location_report_write_failed_(bool requested) {
-  this->location_reporting_active_ = !requested;
+// A location report write was dropped or not acknowledged: go back to the last state the radar
+// acknowledged, so the switch, this component and the radar agree.
+void FP2Component::revert_location_reporting_() {
+  this->location_reporting_active_ = this->location_reporting_confirmed_;
 #ifdef USE_SWITCH
   if (this->location_report_switch_ != nullptr) {
-    this->location_report_switch_->publish_state(!requested);
+    this->location_report_switch_->publish_state(this->location_reporting_confirmed_);
   }
 #endif
+  // Reports may have been published while the write was being retried.
+  if (!this->location_reporting_confirmed_) {
+    this->publish_location_unknown_();
+  }
 }
 
 // --- Radar watchdog ------------------------------------------------------------------------
@@ -454,9 +467,14 @@ void FP2Component::handle_incoming_byte_(uint8_t byte) {
         this->rx_state_ = RxState::RX_STATE_SYNC;
         return;
       }
-      // The header checksum makes the length trustworthy, so even a frame too long to process is
-      // read to its end (and its CRC checked) rather than resynchronizing in the middle of it.
+      // A frame too long to process is still read to its end (and its CRC checked) rather than
+      // resynchronizing in the middle of it; only an implausible length resynchronizes at once.
       this->rx_len_ = encode_uint16(this->rx_header_[5], this->rx_header_[6]);
+      if (this->rx_len_ > MAX_RX_FRAME_PAYLOAD) {
+        ESP_LOGW(TAG, "Implausible frame length %u, resynchronizing", this->rx_len_);
+        this->rx_state_ = RxState::RX_STATE_SYNC;
+        return;
+      }
       this->rx_pos_ = 0;
       this->rx_crc_calc_ = crc16(this->rx_header_.data(), this->rx_header_.size());
       this->rx_state_ = this->rx_len_ == 0 ? RxState::RX_STATE_CRC_L : RxState::RX_STATE_PAYLOAD;
@@ -509,6 +527,9 @@ void FP2Component::handle_frame_(OpCode op, AttrId attr_id) {
     case OpCode::OP_CODE_ACK:
       if (this->inflight_active_ && this->inflight_.attr_id == attr_id) {
         this->inflight_active_ = false;
+        if (attr_id == AttrId::ATTR_ID_LOCATION_REPORT_ENABLE) {
+          this->location_reporting_confirmed_ = this->inflight_.data[3] != 0;
+        }
         if (!this->inflight_is_config_ && this->config_state_ == ConfigState::CONFIG_STATE_DONE) {
           this->status_clear_warning();
         }
@@ -662,7 +683,7 @@ void FP2Component::set_location_reporting_enabled(bool enabled) {
     const uint8_t value = enabled ? 1 : 0;
     if (!this->enqueue_(OpCode::OP_CODE_WRITE, AttrId::ATTR_ID_LOCATION_REPORT_ENABLE, DataType::DATA_TYPE_UINT8,
                         &value, 1)) {
-      this->location_report_write_failed_(enabled);
+      this->revert_location_reporting_();
       return;
     }
   }

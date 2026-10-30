@@ -24,10 +24,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "configured these reach the real inverter.",
     )
     parser.addoption(
-        "--aqara-fp2-binary",
+        "--aqara-fp2-build-dir",
         default=None,
-        help="Host build of tests/components/aqara_fp2/test.host.yaml for the aqara_fp2 "
-        "integration tests",
+        help="ESPHome build directory holding the aqara_fp2 host builds "
+        "(tests/components/aqara_fp2/.esphome/build) for the aqara_fp2 integration tests",
     )
 
 

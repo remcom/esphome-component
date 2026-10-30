@@ -43,6 +43,8 @@ static constexpr uint8_t CMD_QUEUE_SIZE = 8;
 // Largest report payload we process (target list of MAX_TARGETS + framing). Longer frames are
 // still checked and acknowledged, but not processed.
 static constexpr uint8_t MAX_RX_PAYLOAD = 96;
+// Frames declaring a longer payload are treated as corrupt and resynchronized immediately.
+static constexpr uint16_t MAX_RX_FRAME_PAYLOAD = 2048;
 
 #ifdef USE_SENSOR
 // A sensor that is only published when its value changes. Unconfigured (null) sensors are ignored.
@@ -236,7 +238,7 @@ class FP2Component : public Component, public uart::UARTDevice {
   void process_commands_(uint32_t now);
   void send_command_(const FP2Command &cmd, uint32_t now);
   void command_failed_();
-  void location_report_write_failed_(bool requested);
+  void revert_location_reporting_();
 
   // Configuration, generated one step at a time.
   void start_configuration_();
@@ -280,6 +282,8 @@ class FP2Component : public Component, public uart::UARTDevice {
   uint8_t config_step_{0};
   // Without a location_report switch, target locations are always reported.
   bool location_reporting_active_{true};
+  // Last state the radar acknowledged; a failed write returns to it.
+  bool location_reporting_confirmed_{false};
   bool radar_lost_{false};
   uint32_t last_rx_ms_{0};
 

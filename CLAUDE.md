@@ -54,7 +54,7 @@ esphome compile tests/components/<name>/test.esp32-idf.yaml     # compile test
 pytest tests/<component>/ --device-ip=<DEVICE_IP> -v            # integration tests against a flashed device
 ```
 
-Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. The aqara_fp2 integration test starts its host build itself (`--aqara-fp2-binary=<program>`) and plays the radar on a pseudo-terminal linked at `/tmp/aqara-fp2-radar`. sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
+Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. The aqara_fp2 integration test starts its host builds itself (`--aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build`; it needs `test.host.yaml` and `test-location-off.host.yaml` built) and plays the radar on a pseudo-terminal linked at `/tmp/aqara-fp2-radar`. sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
 
 pytest runs with `--import-mode=importlib` (see `pyproject.toml`) because each component has its own `test_schema.py`; schema tests load a component with the `load_component` fixture.
 
@@ -186,8 +186,8 @@ Runs ESPHome on an Aqara FP2 mmWave presence sensor. `FP2Component` (`Component`
 - One WRITE in flight (`inflight_`), sent at most `MAX_SENDS` times (`ACK_TIMEOUT_MS` apart). A failed configuration write sets a warning and returns to WAIT_HEARTBEAT (never continue half-configured); a failed runtime write only sets a warning.
 - The 8-slot queue holds ACKs and answers to radar queries (both inserted at the front) and runtime writes (location report switch). Queued commands go before configuration steps.
 - Watchdog: no valid frame for `radar_timeout` → warning, entities unknown, WAIT_HEARTBEAT. The radar's idle heartbeat interval is not confirmed on hardware, and a heartbeat in DONE is ignored, so a radar restart shorter than `radar_timeout` goes unnoticed.
-- Decoder: a gap of more than `RX_BYTE_TIMEOUT_MS` (50 ms) inside a frame resynchronizes. The CRC is computed while bytes arrive, so frames longer than `MAX_RX_PAYLOAD` are read to the end, CRC-checked and (reports) ACKed without being processed.
-- Location report switch: published optimistically; a dropped or unacknowledged write publishes the previous state again (`location_report_write_failed_()`). Turning location reporting off makes targets, `target_count` and `has_target` unknown.
+- Decoder: a gap of more than `RX_BYTE_TIMEOUT_MS` (50 ms) inside a frame resynchronizes. The CRC is computed while bytes arrive, so frames longer than `MAX_RX_PAYLOAD` are read to the end, CRC-checked and (reports) ACKed without being processed; a declared length above `MAX_RX_FRAME_PAYLOAD` (2048) is treated as a corrupt header and resynchronizes at once.
+- Location report switch: published optimistically. `location_reporting_confirmed_` holds the last state the radar ACKed; a dropped or unacknowledged write reverts to it (`revert_location_reporting_()`), clearing location entities when that state is off. While location reporting is off, targets, `target_count` and `has_target` are unknown, also across (re)configuration; with it on, configuration starts them at 0 / OFF.
 - Radar queries: `DEVICE_DIRECTION` / `ANGLE_SENSOR_DATA`, answered from `FP2Accel`, or upright/0 without `accel:`.
 - Location reporting defaults on; with a `location_report` switch its restore mode decides the boot state.
 - Enum values carry the enum name as prefix (`OP_CODE_ACK`, `ATTR_ID_ZONE_MAP`, …) per ESPHome's naming rule.

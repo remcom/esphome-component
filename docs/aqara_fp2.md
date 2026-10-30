@@ -142,7 +142,7 @@ switch:
 Target positions, `target_count` and `has_target` come from location reports: while location
 reporting is off they are unknown. Without a `location_report` switch it is always on; with one,
 the switch's `restore_mode` (default `ALWAYS_OFF`) decides the state at boot. If the radar does not
-acknowledge a change, the switch goes back to its previous state.
+acknowledge a change, the switch goes back to the last state the radar did acknowledge.
 
 ## How it works
 
@@ -182,10 +182,10 @@ on hardware yet. If the warning shows up in an empty room although the radar wor
 pytest tests/aqara_fp2/test_schema.py -v                       # schema tests, no hardware
 esphome compile tests/components/aqara_fp2/test.esp32-idf.yaml
 
-# Integration tests: the host build talks to a fake radar on a pseudo-terminal
+# Integration tests: the host builds talk to a fake radar on a pseudo-terminal
 esphome compile tests/components/aqara_fp2/test.host.yaml
-pytest tests/aqara_fp2/test_aqara_fp2.py \
-  --aqara-fp2-binary=tests/components/aqara_fp2/.esphome/build/aqara-fp2-host/.pioenvs/aqara-fp2-host/program -v
+esphome compile tests/components/aqara_fp2/test-location-off.host.yaml
+pytest tests/aqara_fp2/test_aqara_fp2.py --aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build -v
 ```
 
 `test-accel.host.yaml` (accelerometer on host I2C) only validates on Linux; `script/clang-tidy.sh`

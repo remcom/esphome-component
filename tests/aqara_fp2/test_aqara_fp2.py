@@ -5,7 +5,9 @@ pseudo-terminal, starts the binary and plays the radar. Entity states are read f
 VERBOSE log, so this needs ESPHome >= 2026.9 (older host loggers do not flush stdout).
 
 Build:  esphome compile tests/components/aqara_fp2/test.host.yaml
-Run:    pytest tests/aqara_fp2/test_aqara_fp2.py --aqara-fp2-binary=<program> -v
+        esphome compile tests/components/aqara_fp2/test-location-off.host.yaml
+Run:    pytest tests/aqara_fp2/test_aqara_fp2.py \
+            --aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build -v
 """
 
 from collections.abc import Iterator
@@ -39,6 +41,7 @@ TYPE_BINARY = 0x06
 ATTR_RADAR_SW_VERSION = 0x0102
 ATTR_PRESENCE_DETECT = 0x0104
 ATTR_MONITOR_MODE = 0x0105
+ATTR_LOCATION_REPORT_ENABLE = 0x0112
 ATTR_ZONE_MAP = 0x0114
 ATTR_LOCATION_TRACKING_DATA = 0x0117
 ATTR_ANGLE_SENSOR_DATA = 0x0120
@@ -46,6 +49,8 @@ ATTR_TEMPERATURE = 0x0128
 ATTR_THERMO_DATA = 0x0141
 ATTR_ZONE_PRESENCE = 0x0142
 ATTR_DEVICE_DIRECTION = 0x0143
+
+TARGET_RECORD_LEN = 14
 
 # Configuration writes for tests/components/aqara_fp2/common.yaml (interference grid, one zone).
 EXPECTED_CONFIG = [
@@ -62,7 +67,7 @@ EXPECTED_CONFIG = [
     0x0173,  # walk distance
     0x0138,  # thermo enable
     0x0141,  # thermo data
-    0x0112,  # location report enable
+    ATTR_LOCATION_REPORT_ENABLE,
     0x0110,  # interference map
     ATTR_ZONE_MAP,
     0x0151,  # zone 1 sensitivity
@@ -217,12 +222,28 @@ class FakeRadar:
         return frames
 
 
+def _start_radar(request: pytest.FixtureRequest, device: str) -> FakeRadar:
+    build_dir = request.config.getoption("--aqara-fp2-build-dir")
+    if build_dir is None:
+        pytest.skip("--aqara-fp2-build-dir not provided")
+    binary = Path(build_dir) / device / ".pioenvs" / device / "program"
+    assert binary.is_file(), f"{binary} not built"
+    return FakeRadar(str(binary))
+
+
 @pytest.fixture
 def radar(request: pytest.FixtureRequest) -> Iterator[FakeRadar]:
-    binary = request.config.getoption("--aqara-fp2-binary")
-    if binary is None:
-        pytest.skip("--aqara-fp2-binary not provided")
-    fake = FakeRadar(binary)
+    """test.host.yaml: location reporting on."""
+    fake = _start_radar(request, "aqara-fp2-host")
+    yield fake
+    with contextlib.suppress(OSError):
+        fake.close()
+
+
+@pytest.fixture
+def radar_location_off(request: pytest.FixtureRequest) -> Iterator[FakeRadar]:
+    """test-location-off.host.yaml: location reporting off at boot."""
+    fake = _start_radar(request, "aqara-fp2-location-off-host")
     yield fake
     with contextlib.suppress(OSError):
         fake.close()
@@ -288,6 +309,31 @@ def test_location_report_publishes_targets(radar: FakeRadar) -> None:
     radar.wait_log(r"'Target 1 speed' >> -30 mm/s")
     radar.wait_log(r"'Target count' >> 1")
     radar.wait_log(r"'Has target' >> ON")
+
+
+def test_configuration_resets_location_entities(radar: FakeRadar) -> None:
+    radar.configure()
+    radar.wait_log(r"'Target count' >> 0")
+    radar.wait_log(r"'Has target' >> OFF")
+
+
+def test_location_entities_unknown_while_reporting_off(
+    radar_location_off: FakeRadar,
+) -> None:
+    frames = radar_location_off.configure()
+    location = next(f for f in frames if f.attr == ATTR_LOCATION_REPORT_ENABLE)
+    assert location.payload[3] == 0
+
+    blob = bytes([1]) + bytes(TARGET_RECORD_LEN)
+    radar_location_off.report(
+        ATTR_LOCATION_TRACKING_DATA, TYPE_BINARY, len(blob).to_bytes(2, "big") + blob
+    )
+    assert radar_location_off.expect_frame().op == OP_ACK
+    radar_location_off.expect_silence(0.3)
+    log = "\n".join(radar_location_off.log)
+    assert "'Has target' >>" not in log
+    assert "'Target count' >>" not in log
+    assert "'Target 1 X' >>" not in log
 
 
 def test_corrupt_frame_ignored(radar: FakeRadar) -> None:

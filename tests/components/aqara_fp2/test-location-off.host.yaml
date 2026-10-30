@@ -1,0 +1,12 @@
+# test.host.yaml with location reporting off at boot (location_report restore_mode ALWAYS_OFF),
+# for tests/aqara_fp2/test_aqara_fp2.py.
+substitutions:
+  device_name: aqara-fp2-location-off-host
+
+packages:
+  host: !include test.host.yaml
+
+switch:
+  - id: !extend fp2_switches
+    location_report:
+      restore_mode: ALWAYS_OFF

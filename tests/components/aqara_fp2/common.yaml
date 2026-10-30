@@ -75,6 +75,7 @@ text_sensor:
 
 switch:
   - platform: aqara_fp2
+    id: fp2_switches  # lets test-location-off.host.yaml override this entry
     location_report:
       name: Report targets
       restore_mode: ALWAYS_ON
