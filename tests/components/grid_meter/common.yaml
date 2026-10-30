@@ -1,4 +1,6 @@
 # Fixed sensor values chosen to satisfy the integration tests in tests/grid_meter/
+# All sensors update every second: a polling sensor's first update comes at a random point in its
+# interval, and the tests start a few seconds after boot.
 substitutions:
   modbus_port: "502"
 
@@ -22,19 +24,19 @@ sensor:
   - platform: template
     id: energy_delivered_tariff1
     lambda: return 1000.5;
-    update_interval: 10s
+    update_interval: 1s
   - platform: template
     id: energy_delivered_tariff2
     lambda: return 2000.25;
-    update_interval: 10s
+    update_interval: 1s
   - platform: template
     id: energy_returned_tariff1
     lambda: return 300.0;
-    update_interval: 10s
+    update_interval: 1s
   - platform: template
     id: energy_returned_tariff2
     lambda: return 400.0;
-    update_interval: 10s
+    update_interval: 1s
 
 grid_meter:
   power_import: power_delivered
