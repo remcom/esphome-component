@@ -14,6 +14,9 @@
 #ifdef USE_TEXT_SENSOR
 #include "esphome/components/text_sensor/text_sensor.h"
 #endif
+#ifdef USE_BUTTON
+#include "esphome/components/button/button.h"
+#endif
 #ifdef USE_EVENT
 #include "esphome/components/event/event.h"
 #endif
@@ -165,6 +168,14 @@ class LocationReportSwitch : public switch_::Switch, public Parented<FP2Componen
 };
 #endif
 
+#ifdef USE_BUTTON
+// Button that resets the radar (or, without a reset pin, reconfigures it on its next heartbeat).
+class RestartRadarButton : public button::Button, public Parented<FP2Component> {
+ protected:
+  void press_action() override;
+};
+#endif
+
 class FP2Component : public Component, public uart::UARTDevice {
 #ifdef USE_BINARY_SENSOR
   SUB_BINARY_SENSOR(presence)
@@ -176,6 +187,9 @@ class FP2Component : public Component, public uart::UARTDevice {
 #endif
 #ifdef USE_SWITCH
   SUB_SWITCH(location_report)
+#endif
+#ifdef USE_BUTTON
+  SUB_BUTTON(restart_radar)
 #endif
 
  public:
@@ -232,6 +246,7 @@ class FP2Component : public Component, public uart::UARTDevice {
 #endif
 
   void set_location_reporting_enabled(bool enabled);
+  void restart_radar();
 
  protected:
   enum class ConfigState : uint8_t {

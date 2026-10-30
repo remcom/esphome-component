@@ -146,7 +146,16 @@ switch:
   - platform: aqara_fp2
     location_report:
       name: Report targets
+
+button:
+  - platform: aqara_fp2
+    restart_radar:      # pulses reset_pin and reconfigures the radar
+      name: Restart radar
 ```
+
+`restart_radar` resets the radar through `reset_pin` and sends the configuration again on its first
+heartbeat; without a `reset_pin` it only reconfigures. Pressing it with the log open shows the
+radar's start-up, which otherwise happens before a log client can connect.
 
 ### Presence and motion
 
@@ -163,8 +172,9 @@ leave (1), approach (6) and away (7) have been seen. Other values are logged at 
 
 Target positions, `target_count` and `has_target` come from location reports: while location
 reporting is off they are unknown. Without a `location_report` switch it is always on; with one,
-the switch's `restore_mode` (default `ALWAYS_OFF`) decides the state at boot. If the radar does not
-acknowledge a change, the switch goes back to the last state the radar did acknowledge.
+the switch's `restore_mode` (default `RESTORE_DEFAULT_ON`: on, unless it was switched off before
+the restart) decides the state at boot. If the radar does not acknowledge a change, the switch goes
+back to the last state the radar did acknowledge.
 
 ## How it works
 

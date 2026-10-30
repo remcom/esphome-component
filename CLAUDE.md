@@ -191,7 +191,7 @@ Runs ESPHome on an Aqara FP2 mmWave presence sensor. `FP2Component` (`Component`
 - Radar queries: `DEVICE_DIRECTION` (UINT8) / `ANGLE_SENSOR_DATA` (UINT16, as the stock firmware), answered from `FP2Accel`, or upright/0 without `accel:`. The radar asks for the tilt only at boot.
 - Presence/motion: the radar sends no presence (0x0104) or motion (0x0103) reports until it has the boot exchange (tilt/orientation answers, configuration incl. `WORK_MODE` = 3); a lost exchange (the UART's default 256-byte RX buffer overflows during loop stalls) leaves presence silent while location reports still work. 0x0103 is a movement event (0 enter, 1 leave, 6 approach, 7 away), exposed on the `event` platform as `movement`; the `motion` binary sensors are derived (`MotionTimer`: on per event, off on leave / presence clear / `motion_timeout`). Zone motion (0x0115) values are undecoded event flags.
 - Every report except location and heartbeat is logged at debug level with its raw value (formats are reverse-engineered; hansihe/AqaraPresenceSensorFP2ReverseEngineering has stock-firmware UART captures).
-- Location reporting defaults on; with a `location_report` switch its restore mode decides the boot state.
+- Location reporting defaults on; with a `location_report` switch its restore mode (default `RESTORE_DEFAULT_ON`) decides the boot state.
 - Enum values carry the enum name as prefix (`OP_CODE_ACK`, `ATTR_ID_ZONE_MAP`, …) per ESPHome's naming rule.
 
 ### ESPHome integration

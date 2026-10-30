@@ -403,6 +403,18 @@ void FP2Component::revert_location_reporting_() {
 
 // --- Radar watchdog ------------------------------------------------------------------------
 
+void FP2Component::restart_radar() {
+  ESP_LOGI(TAG, "Restarting radar");
+  this->config_state_ = ConfigState::CONFIG_STATE_WAIT_HEARTBEAT;
+  this->inflight_active_ = false;
+  this->queue_count_ = 0;
+  this->rx_state_ = RxState::RX_STATE_SYNC;
+  this->last_rx_ms_ = App.get_loop_component_start_time();
+  this->radar_lost_ = false;
+  this->publish_unknown_states_();
+  this->perform_reset_();
+}
+
 void FP2Component::check_radar_timeout_(uint32_t now) {
   if (this->radar_timeout_ms_ == 0 || this->radar_lost_ || now - this->last_rx_ms_ <= this->radar_timeout_ms_) {
     return;
@@ -823,7 +835,14 @@ void FP2Component::dump_config() {
 #ifdef USE_SWITCH
   LOG_SWITCH("  ", "Location report", this->location_report_switch_);
 #endif
+#ifdef USE_BUTTON
+  LOG_BUTTON("  ", "Restart radar", this->restart_radar_button_);
+#endif
 }
+
+#ifdef USE_BUTTON
+void RestartRadarButton::press_action() { this->parent_->restart_radar(); }
+#endif
 
 #ifdef USE_SWITCH
 void LocationReportSwitch::write_state(bool state) {

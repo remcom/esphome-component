@@ -17,6 +17,7 @@ CONFIG_SCHEMA = {
     cv.GenerateID(CONF_AQARA_FP2_ID): cv.use_id(FP2Component),
     cv.Optional(CONF_LOCATION_REPORT): switch.switch_schema(
         LocationReportSwitch,
+        default_restore_mode="RESTORE_DEFAULT_ON",
         entity_category=ENTITY_CATEGORY_CONFIG,
         icon=ICON_CROSSHAIRS_GPS,
     ),

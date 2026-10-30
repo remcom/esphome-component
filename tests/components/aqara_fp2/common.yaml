@@ -69,6 +69,11 @@ sensor:
       speed:
         name: Target 1 speed
 
+button:
+  - platform: aqara_fp2
+    restart_radar:
+      name: Restart radar
+
 event:
   - platform: aqara_fp2
     movement:
@@ -88,4 +93,3 @@ switch:
     id: fp2_switches  # lets test-location-off.host.yaml override this entry
     location_report:
       name: Report targets
-      restore_mode: ALWAYS_ON
