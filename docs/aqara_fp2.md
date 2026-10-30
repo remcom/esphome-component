@@ -139,9 +139,10 @@ switch:
       name: Report targets
 ```
 
-Target positions and `target_count` / `has_target` are only published while location reporting is
-on. Without a `location_report` switch it is always on; with one, the switch's `restore_mode`
-(default `ALWAYS_OFF`) decides the state at boot.
+Target positions, `target_count` and `has_target` come from location reports: while location
+reporting is off they are unknown. Without a `location_report` switch it is always on; with one,
+the switch's `restore_mode` (default `ALWAYS_OFF`) decides the state at boot. If the radar does not
+acknowledge a change, the switch goes back to its previous state.
 
 ## How it works
 
@@ -158,8 +159,9 @@ orientation and tilt, the component answers right away with the accelerometer's 
 ### Radar watchdog
 
 When the radar sends nothing for `radar_timeout`, the component sets a warning, marks the radar
-entities unknown and sends the configuration again on the next heartbeat. This also reconfigures a
-radar that reset on its own.
+entities unknown and sends the configuration again on the next heartbeat. A radar that resets on
+its own is only reconfigured this way if it stays silent for at least `radar_timeout`; a faster
+restart is not detected yet, because a restart heartbeat cannot be told apart from a regular one.
 
 How often the radar sends its heartbeat while nothing happens in the room has not been confirmed
 on hardware yet. If the warning shows up in an empty room although the radar works, raise
@@ -168,6 +170,9 @@ on hardware yet. If the warning shows up in an empty room although the radar wor
 ## Scope / Limitations
 
 - Fall detection is not implemented.
+- A radar that restarts faster than `radar_timeout` is not reconfigured (see above).
+- Radar frames longer than 96 bytes (for example thermal data, which the stock start-up sequence
+  enables) are checked and acknowledged but not processed.
 - The accelerometer is sampled at a fixed 100 ms: the stock firmware's orientation and vibration
   logic counts samples and assumes that rate.
 

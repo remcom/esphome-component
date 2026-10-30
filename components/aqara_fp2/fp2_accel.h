@@ -92,7 +92,8 @@ class FP2Accel : public Component, public i2c::I2CDevice {
   uint8_t vibration_high_count_{0};
   uint8_t vibration_low_count_{0};
   bool vibrating_{false};
-  bool last_published_vibrating_{false};
+  // Publishes the first state too, so a device at rest reports "off" instead of unknown.
+  Deduplicator<bool> vibration_dedup_;
 };
 
 }  // namespace esphome::aqara_fp2

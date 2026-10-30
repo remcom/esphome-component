@@ -43,6 +43,7 @@ ATTR_ZONE_MAP = 0x0114
 ATTR_LOCATION_TRACKING_DATA = 0x0117
 ATTR_ANGLE_SENSOR_DATA = 0x0120
 ATTR_TEMPERATURE = 0x0128
+ATTR_THERMO_DATA = 0x0141
 ATTR_ZONE_PRESENCE = 0x0142
 ATTR_DEVICE_DIRECTION = 0x0143
 
@@ -297,6 +298,30 @@ def test_corrupt_frame_ignored(radar: FakeRadar) -> None:
     os.write(radar.master, frame)
     radar.expect_silence(0.5)
     radar.wait_log(r"Frame CRC mismatch")
+
+
+def test_truncated_frame_dropped_after_gap(radar: FakeRadar) -> None:
+    """A frame cut short must not swallow the next frame once the line has been quiet."""
+    report = build_frame(
+        OP_REPORT, attribute(ATTR_PRESENCE_DETECT, TYPE_UINT8, b"\x01")
+    )
+    os.write(radar.master, report[:5])
+    time.sleep(0.2)
+    os.write(radar.master, report)
+    ack = radar.expect_frame()
+    assert (ack.op, ack.attr) == (OP_ACK, ATTR_PRESENCE_DETECT)
+
+
+def test_oversized_report_acknowledged(radar: FakeRadar) -> None:
+    """Reports too long to process (thermal data) are still acknowledged, and decoding goes on."""
+    blob = bytes(120)
+    radar.report(ATTR_THERMO_DATA, TYPE_BINARY, len(blob).to_bytes(2, "big") + blob)
+    ack = radar.expect_frame()
+    assert (ack.op, ack.attr) == (OP_ACK, ATTR_THERMO_DATA)
+    radar.wait_log(r"Ignoring 0x0141")
+
+    radar.report(ATTR_PRESENCE_DETECT, TYPE_UINT8, b"\x01")
+    assert radar.expect_frame().attr == ATTR_PRESENCE_DETECT
 
 
 @pytest.mark.parametrize("attr", [ATTR_DEVICE_DIRECTION, ATTR_ANGLE_SENSOR_DATA])

@@ -40,7 +40,8 @@ static constexpr uint8_t MAX_CMD_DATA = 6 + GRID_SIZE;
 // Holds ACKs, answers to radar queries and runtime writes. The configuration is not queued: it is
 // generated one command at a time while the radar acknowledges each write.
 static constexpr uint8_t CMD_QUEUE_SIZE = 8;
-// Largest report payload we accept from the radar (target list of MAX_TARGETS + framing).
+// Largest report payload we process (target list of MAX_TARGETS + framing). Longer frames are
+// still checked and acknowledged, but not processed.
 static constexpr uint8_t MAX_RX_PAYLOAD = 96;
 
 #ifdef USE_SENSOR
@@ -230,11 +231,12 @@ class FP2Component : public Component, public uart::UARTDevice {
   };
 
   // Outgoing commands.
-  void enqueue_(OpCode type, AttrId attr_id, DataType data_type, const uint8_t *value, uint8_t value_len,
+  bool enqueue_(OpCode type, AttrId attr_id, DataType data_type, const uint8_t *value, uint8_t value_len,
                 bool front = false);
   void process_commands_(uint32_t now);
   void send_command_(const FP2Command &cmd, uint32_t now);
   void command_failed_();
+  void location_report_write_failed_(bool requested);
 
   // Configuration, generated one step at a time.
   void start_configuration_();
@@ -252,7 +254,8 @@ class FP2Component : public Component, public uart::UARTDevice {
   void handle_report_(AttrId attr_id);
   void handle_location_report_();
   void handle_radar_query_(AttrId attr_id);
-  void publish_targets_unknown_();
+  // Target sensors, target count and has_target: everything that comes from location reports.
+  void publish_location_unknown_();
 
   GPIOPin *reset_pin_{nullptr};
 #ifdef USE_AQARA_FP2_ACCEL
@@ -299,6 +302,8 @@ class FP2Component : public Component, public uart::UARTDevice {
   uint16_t rx_len_{0};
   uint16_t rx_pos_{0};
   uint16_t rx_crc_{0};
+  uint16_t rx_crc_calc_{0};  // running CRC over header and payload
+  uint32_t rx_last_byte_ms_{0};
   uint8_t rx_payload_[MAX_RX_PAYLOAD];
 
 #ifdef USE_SENSOR

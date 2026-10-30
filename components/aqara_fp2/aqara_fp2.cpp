@@ -27,6 +27,8 @@ static constexpr uint32_t ACK_TIMEOUT_MS = 500;
 // A write is sent this many times before the radar is considered to have rejected it.
 static constexpr uint8_t MAX_SENDS = 3;
 static constexpr uint32_t RESET_PULSE_MS = 100;
+// A frame takes about 1 ms at 890000 baud; a longer gap means bytes were lost.
+static constexpr uint32_t RX_BYTE_TIMEOUT_MS = 50;
 
 // Configuration steps, see build_config_command_().
 static constexpr uint8_t ATTRIBUTE_STEPS = 14;
@@ -101,15 +103,19 @@ void FP2Component::perform_reset_() {
 }
 
 void FP2Component::loop() {
-  while (this->available() > 0) {
+  const uint32_t now = App.get_loop_component_start_time();
+  if (this->available() > 0) {
+    this->rx_last_byte_ms_ = now;
     uint8_t byte;
-    if (!this->read_byte(&byte)) {
-      break;
+    while (this->available() > 0 && this->read_byte(&byte)) {
+      this->handle_incoming_byte_(byte);
     }
-    this->handle_incoming_byte_(byte);
+  } else if (this->rx_state_ != RxState::RX_STATE_SYNC && now - this->rx_last_byte_ms_ > RX_BYTE_TIMEOUT_MS) {
+    // Drop a truncated frame instead of reading the next frame's bytes into it.
+    ESP_LOGV(TAG, "Incomplete frame, resynchronizing");
+    this->rx_state_ = RxState::RX_STATE_SYNC;
   }
 
-  const uint32_t now = App.get_loop_component_start_time();
   this->check_radar_timeout_(now);
   this->process_commands_(now);
 }
@@ -184,6 +190,8 @@ bool FP2Component::build_config_command_(uint8_t step, FP2Command &cmd) const {
       case 10:
         fill_uint8(cmd, AttrId::ATTR_ID_WALK_DISTANCE_ENABLE, DataType::DATA_TYPE_UINT8, 0);
         break;
+      // Steps 11 and 12 follow the stock firmware's start-up sequence; nothing here uses the
+      // thermal reports they enable (larger ones are acknowledged without being processed).
       case 11:
         fill_uint8(cmd, AttrId::ATTR_ID_THERMO_EN, DataType::DATA_TYPE_BOOL, 1);
         break;
@@ -249,12 +257,12 @@ bool FP2Component::build_config_command_(uint8_t step, FP2Command &cmd) const {
 
 // --- Outgoing commands ---------------------------------------------------------------------
 
-void FP2Component::enqueue_(OpCode type, AttrId attr_id, DataType data_type, const uint8_t *value, uint8_t value_len,
+bool FP2Component::enqueue_(OpCode type, AttrId attr_id, DataType data_type, const uint8_t *value, uint8_t value_len,
                             bool front) {
   if (this->queue_count_ >= CMD_QUEUE_SIZE) {
     ESP_LOGW(TAG, "Command queue full, dropping 0x%04X", static_cast<uint16_t>(attr_id));
     this->status_set_warning(LOG_STR("Command queue full"));
-    return;
+    return false;
   }
 
   uint8_t index;
@@ -266,6 +274,7 @@ void FP2Component::enqueue_(OpCode type, AttrId attr_id, DataType data_type, con
   }
   this->queue_count_++;
   fill_command(this->queue_[index], type, attr_id, data_type, value, value_len);
+  return true;
 }
 
 void FP2Component::process_commands_(uint32_t now) {
@@ -349,7 +358,21 @@ void FP2Component::command_failed_() {
     this->status_set_warning(LOG_STR("Radar configuration failed, retrying on next heartbeat"));
   } else {
     this->status_set_warning(LOG_STR("Radar did not acknowledge a command"));
+    if (this->inflight_.attr_id == AttrId::ATTR_ID_LOCATION_REPORT_ENABLE) {
+      this->location_report_write_failed_(this->inflight_.data[3] != 0);
+    }
   }
+}
+
+// The radar did not take the new location report state: go back to the old one, so the switch,
+// this component and the radar agree.
+void FP2Component::location_report_write_failed_(bool requested) {
+  this->location_reporting_active_ = !requested;
+#ifdef USE_SWITCH
+  if (this->location_report_switch_ != nullptr) {
+    this->location_report_switch_->publish_state(!requested);
+  }
+#endif
 }
 
 // --- Radar watchdog ------------------------------------------------------------------------
@@ -368,7 +391,7 @@ void FP2Component::check_radar_timeout_(uint32_t now) {
 
 void FP2Component::publish_unknown_states_() {
 #ifdef USE_BINARY_SENSOR
-  for (auto *sens : {this->presence_binary_sensor_, this->motion_binary_sensor_, this->target_binary_sensor_}) {
+  for (auto *sens : {this->presence_binary_sensor_, this->motion_binary_sensor_}) {
     if (sens != nullptr) {
       sens->invalidate_state();
     }
@@ -383,19 +406,24 @@ void FP2Component::publish_unknown_states_() {
   }
 #endif
 #ifdef USE_SENSOR
-  this->target_count_sensor_.publish_unknown();
   this->radar_temperature_sensor_.publish_unknown();
 #endif
-  this->publish_targets_unknown_();
+  this->publish_location_unknown_();
 }
 
-void FP2Component::publish_targets_unknown_() {
+void FP2Component::publish_location_unknown_() {
 #ifdef USE_SENSOR
   for (uint8_t i = 0; i < MAX_TARGETS; i++) {
     this->target_x_sensors_[i].publish_unknown();
     this->target_y_sensors_[i].publish_unknown();
     this->target_z_sensors_[i].publish_unknown();
     this->target_speed_sensors_[i].publish_unknown();
+  }
+  this->target_count_sensor_.publish_unknown();
+#endif
+#ifdef USE_BINARY_SENSOR
+  if (this->target_binary_sensor_ != nullptr) {
+    this->target_binary_sensor_->invalidate_state();
   }
 #endif
 }
@@ -421,22 +449,25 @@ void FP2Component::handle_incoming_byte_(uint8_t byte) {
       if (pos < FRAME_HEADER_LEN) {
         return;
       }
-      this->rx_len_ = encode_uint16(this->rx_header_[5], this->rx_header_[6]);
       if (byte != header_checksum(this->rx_header_.data())) {
         ESP_LOGV(TAG, "Header checksum mismatch");
         this->rx_state_ = RxState::RX_STATE_SYNC;
-      } else if (this->rx_len_ > MAX_RX_PAYLOAD) {
-        ESP_LOGW(TAG, "Payload too large (%u bytes), dropping", this->rx_len_);
-        this->rx_state_ = RxState::RX_STATE_SYNC;
-      } else {
-        this->rx_pos_ = 0;
-        this->rx_state_ = this->rx_len_ == 0 ? RxState::RX_STATE_CRC_L : RxState::RX_STATE_PAYLOAD;
+        return;
       }
+      // The header checksum makes the length trustworthy, so even a frame too long to process is
+      // read to its end (and its CRC checked) rather than resynchronizing in the middle of it.
+      this->rx_len_ = encode_uint16(this->rx_header_[5], this->rx_header_[6]);
+      this->rx_pos_ = 0;
+      this->rx_crc_calc_ = crc16(this->rx_header_.data(), this->rx_header_.size());
+      this->rx_state_ = this->rx_len_ == 0 ? RxState::RX_STATE_CRC_L : RxState::RX_STATE_PAYLOAD;
       return;
     }
     case RxState::RX_STATE_PAYLOAD:
-      this->rx_payload_[this->rx_pos_++] = byte;
-      if (this->rx_pos_ >= this->rx_len_) {
+      if (this->rx_pos_ < MAX_RX_PAYLOAD) {
+        this->rx_payload_[this->rx_pos_] = byte;
+      }
+      this->rx_crc_calc_ = crc16(&byte, 1, this->rx_crc_calc_);
+      if (++this->rx_pos_ >= this->rx_len_) {
         this->rx_state_ = RxState::RX_STATE_CRC_L;
       }
       return;
@@ -447,19 +478,27 @@ void FP2Component::handle_incoming_byte_(uint8_t byte) {
     case RxState::RX_STATE_CRC_H: {
       this->rx_crc_ |= static_cast<uint16_t>(byte) << 8;
       this->rx_state_ = RxState::RX_STATE_SYNC;
-      // The CRC covers the 8 header bytes followed by the payload.
-      const uint16_t calc =
-          crc16(this->rx_payload_, this->rx_len_, crc16(this->rx_header_.data(), this->rx_header_.size()));
-      if (calc != this->rx_crc_) {
+      if (this->rx_crc_calc_ != this->rx_crc_) {
         ESP_LOGW(TAG, "Frame CRC mismatch");
         return;
       }
       this->last_rx_ms_ = App.get_loop_component_start_time();
       this->radar_lost_ = false;
-      if (this->rx_len_ >= 2) {
-        const auto attr_id = static_cast<AttrId>(encode_uint16(this->rx_payload_[0], this->rx_payload_[1]));
-        this->handle_frame_(static_cast<OpCode>(this->rx_header_[4]), attr_id);
+      if (this->rx_len_ < 2) {
+        return;
       }
+      const auto op = static_cast<OpCode>(this->rx_header_[4]);
+      const auto attr_id = static_cast<AttrId>(encode_uint16(this->rx_payload_[0], this->rx_payload_[1]));
+      if (this->rx_len_ > MAX_RX_PAYLOAD) {
+        // Not processed, but a report must still be acknowledged or the radar keeps resending it.
+        ESP_LOGD(TAG, "Ignoring 0x%04X: %u bytes is more than %u", static_cast<uint16_t>(attr_id), this->rx_len_,
+                 MAX_RX_PAYLOAD);
+        if (op == OpCode::OP_CODE_REPORT) {
+          this->enqueue_(OpCode::OP_CODE_ACK, attr_id, DataType::DATA_TYPE_VOID, nullptr, 0, /*front=*/true);
+        }
+        return;
+      }
+      this->handle_frame_(op, attr_id);
       return;
     }
   }
@@ -621,10 +660,14 @@ void FP2Component::set_location_reporting_enabled(bool enabled) {
   // While waiting for a heartbeat the state is sent with the configuration.
   if (this->config_state_ != ConfigState::CONFIG_STATE_WAIT_HEARTBEAT) {
     const uint8_t value = enabled ? 1 : 0;
-    this->enqueue_(OpCode::OP_CODE_WRITE, AttrId::ATTR_ID_LOCATION_REPORT_ENABLE, DataType::DATA_TYPE_UINT8, &value, 1);
+    if (!this->enqueue_(OpCode::OP_CODE_WRITE, AttrId::ATTR_ID_LOCATION_REPORT_ENABLE, DataType::DATA_TYPE_UINT8,
+                        &value, 1)) {
+      this->location_report_write_failed_(enabled);
+      return;
+    }
   }
   if (!enabled) {
-    this->publish_targets_unknown_();
+    this->publish_location_unknown_();
   }
 }
 
@@ -673,8 +716,9 @@ void FP2Component::dump_config() {
 
 #ifdef USE_SWITCH
 void LocationReportSwitch::write_state(bool state) {
-  this->parent_->set_location_reporting_enabled(state);
+  // Published first: the parent publishes the old state again if the radar does not take it.
   this->publish_state(state);
+  this->parent_->set_location_reporting_enabled(state);
 }
 #endif
 

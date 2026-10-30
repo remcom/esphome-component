@@ -232,9 +232,8 @@ void FP2Accel::process_samples_(int32_t acc_x, int32_t acc_y, int32_t acc_z, int
   }
   this->last_energy_sum_ = energy_sum;
 
-  if (this->vibrating_ != this->last_published_vibrating_) {
+  if (this->vibration_dedup_.next(this->vibrating_)) {
     ESP_LOGD(TAG, "Vibration %s", this->vibrating_ ? LOG_STR_LITERAL("ON") : LOG_STR_LITERAL("OFF"));
-    this->last_published_vibrating_ = this->vibrating_;
 #ifdef USE_BINARY_SENSOR
     if (this->vibration_binary_sensor_ != nullptr) {
       this->vibration_binary_sensor_->publish_state(this->vibrating_);

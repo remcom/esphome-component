@@ -185,7 +185,9 @@ Runs ESPHome on an Aqara FP2 mmWave presence sensor. `FP2Component` (`Component`
 - `ConfigState`: WAIT_HEARTBEAT → (heartbeat, `RADAR_SW_VERSION` report) → SENDING → DONE. The configuration is not queued: `build_config_command_(step)` generates step N (attributes, grids, map + sensitivity per zone, activation list, close/away per zone) when the previous write was ACKed. Nothing is sent before the first heartbeat.
 - One WRITE in flight (`inflight_`), sent at most `MAX_SENDS` times (`ACK_TIMEOUT_MS` apart). A failed configuration write sets a warning and returns to WAIT_HEARTBEAT (never continue half-configured); a failed runtime write only sets a warning.
 - The 8-slot queue holds ACKs and answers to radar queries (both inserted at the front) and runtime writes (location report switch). Queued commands go before configuration steps.
-- Watchdog: no valid frame for `radar_timeout` → warning, entities unknown, WAIT_HEARTBEAT. The radar's idle heartbeat interval is not confirmed on hardware.
+- Watchdog: no valid frame for `radar_timeout` → warning, entities unknown, WAIT_HEARTBEAT. The radar's idle heartbeat interval is not confirmed on hardware, and a heartbeat in DONE is ignored, so a radar restart shorter than `radar_timeout` goes unnoticed.
+- Decoder: a gap of more than `RX_BYTE_TIMEOUT_MS` (50 ms) inside a frame resynchronizes. The CRC is computed while bytes arrive, so frames longer than `MAX_RX_PAYLOAD` are read to the end, CRC-checked and (reports) ACKed without being processed.
+- Location report switch: published optimistically; a dropped or unacknowledged write publishes the previous state again (`location_report_write_failed_()`). Turning location reporting off makes targets, `target_count` and `has_target` unknown.
 - Radar queries: `DEVICE_DIRECTION` / `ANGLE_SENSOR_DATA`, answered from `FP2Accel`, or upright/0 without `accel:`.
 - Location reporting defaults on; with a `location_report` switch its restore mode decides the boot state.
 - Enum values carry the enum name as prefix (`OP_CODE_ACK`, `ATTR_ID_ZONE_MAP`, …) per ESPHome's naming rule.
