@@ -69,6 +69,7 @@ class FP2Accel : public Component, public i2c::I2CDevice {
   void process_samples_(int32_t acc_x, int32_t acc_y, int32_t acc_z, int32_t energy_sum);
 
   uint32_t last_sample_ms_{0};
+  uint8_t read_failures_{0};
 
   // Rolling sample buffers.
   std::array<int16_t, ACC_SAMPLE_COUNT> acc_x_buf_{};

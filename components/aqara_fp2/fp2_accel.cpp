@@ -24,6 +24,10 @@ static constexpr uint8_t VAL_CONFIG_B = 0x40;
 // The stock firmware's debounce counts assume one decision per second: 10 samples, 100 ms apart.
 static constexpr uint32_t SAMPLE_INTERVAL_MS = 100;
 
+// Consecutive failed reads (one decision window) before the warning is set. A single read that
+// times out now and then is skipped silently: the next one recovers the bus.
+static constexpr uint8_t READ_FAILURES_BEFORE_WARNING = ACC_SAMPLE_COUNT;
+
 // Radians to degrees.
 static constexpr float SCALE_FACTOR = 57.2957795f;
 
@@ -72,9 +76,16 @@ void FP2Accel::loop() {
 bool FP2Accel::read_accel_xyz_(int16_t *x, int16_t *y, int16_t *z) {
   uint8_t data[6];
   if (!this->read_bytes(REG_DATA_START, data, sizeof(data))) {
-    this->status_set_warning(LOG_STR("Failed to read accelerometer"));
+    if (this->read_failures_ < READ_FAILURES_BEFORE_WARNING) {
+      this->read_failures_++;
+      ESP_LOGV(TAG, "Read failed (%u in a row)", this->read_failures_);
+    }
+    if (this->read_failures_ == READ_FAILURES_BEFORE_WARNING) {
+      this->status_set_warning(LOG_STR("Failed to read accelerometer"));
+    }
     return false;
   }
+  this->read_failures_ = 0;
   this->status_clear_warning();
 
   // Each axis is a 12-bit two's-complement value, left-justified across two bytes.

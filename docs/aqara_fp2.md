@@ -174,7 +174,9 @@ on hardware yet. If the warning shows up in an empty room although the radar wor
 - Radar frames longer than 96 bytes (for example thermal data, which the stock start-up sequence
   enables) are checked and acknowledged but not processed.
 - The accelerometer is sampled at a fixed 100 ms: the stock firmware's orientation and vibration
-  logic counts samples and assumes that rate.
+  logic counts samples and assumes that rate. A failed read skips that sample; the component only
+  sets a warning after 10 failed reads in a row (1 s). ESP-IDF still logs each I2C timeout itself
+  (`i2c.master: I2C bus is still busy but software timeout detected`).
 
 ## Running tests
 

@@ -29,6 +29,8 @@ static constexpr uint8_t MAX_SENDS = 3;
 static constexpr uint32_t RESET_PULSE_MS = 100;
 // A frame takes about 1 ms at 890000 baud; a longer gap means bytes were lost.
 static constexpr uint32_t RX_BYTE_TIMEOUT_MS = 50;
+// Value bytes of a report shown in the debug log (enough for every non-blob report).
+static constexpr size_t REPORT_LOG_BYTES = 8;
 
 // Configuration steps, see build_config_command_().
 static constexpr uint8_t ATTRIBUTE_STEPS = 14;
@@ -570,6 +572,13 @@ void FP2Component::handle_report_(AttrId attr_id) {
     return;
   }
   this->enqueue_(OpCode::OP_CODE_ACK, attr_id, DataType::DATA_TYPE_VOID, nullptr, 0, /*front=*/true);
+
+  // Raw report (type tag and value), except the frequent location reports: the value formats were
+  // reverse-engineered and are not all confirmed on hardware.
+  if (attr_id != AttrId::ATTR_ID_LOCATION_TRACKING_DATA) {
+    char hex[format_hex_pretty_size(REPORT_LOG_BYTES)];
+    ESP_LOGD(TAG, "Report 0x%04X: %s", static_cast<uint16_t>(attr_id), format_hex_pretty_to(hex, payload + 2, len - 2));
+  }
 
   switch (attr_id) {
 #ifdef USE_BINARY_SENSOR
