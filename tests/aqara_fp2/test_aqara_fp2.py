@@ -371,13 +371,22 @@ def test_oversized_report_acknowledged(radar: FakeRadar) -> None:
     assert radar.expect_frame().attr == ATTR_PRESENCE_DETECT
 
 
-@pytest.mark.parametrize("attr", [ATTR_DEVICE_DIRECTION, ATTR_ANGLE_SENSOR_DATA])
-def test_radar_query_answered(radar: FakeRadar, attr: int) -> None:
-    """Without an accelerometer the answer is "upright" / 0 degrees."""
+@pytest.mark.parametrize(
+    ("attr", "value"),
+    [
+        (ATTR_DEVICE_DIRECTION, attribute(ATTR_DEVICE_DIRECTION, TYPE_UINT8, b"\x00")),
+        (
+            ATTR_ANGLE_SENSOR_DATA,
+            attribute(ATTR_ANGLE_SENSOR_DATA, TYPE_UINT16, b"\x00\x00"),
+        ),
+    ],
+)
+def test_radar_query_answered(radar: FakeRadar, attr: int, value: bytes) -> None:
+    """Without an accelerometer the answer is "upright" (UINT8) / 0 degrees (UINT16, as the stock firmware)."""
     radar.send(OP_RESPONSE, attr.to_bytes(2, "big"))
     answer = radar.expect_frame()
     assert answer.op == OP_READ
-    assert answer.payload == attribute(attr, TYPE_UINT8, b"\x00")
+    assert answer.payload == value
 
 
 def test_unacknowledged_configuration_restarts_on_heartbeat(radar: FakeRadar) -> None:

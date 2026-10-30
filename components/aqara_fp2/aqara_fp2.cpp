@@ -664,30 +664,36 @@ void FP2Component::handle_location_report_() {
 }
 
 void FP2Component::handle_radar_query_(AttrId attr_id) {
-  uint8_t value;
+  // Answered like the stock firmware: the orientation as UINT8, the tilt angle as UINT16.
   switch (attr_id) {
-    case AttrId::ATTR_ID_DEVICE_DIRECTION:
-      value = ORIENTATION_UP;
+    case AttrId::ATTR_ID_DEVICE_DIRECTION: {
+      uint8_t orientation = ORIENTATION_UP;
 #ifdef USE_AQARA_FP2_ACCEL
       if (this->accel_ != nullptr) {
-        value = static_cast<uint8_t>(this->accel_->get_orientation());
+        orientation = static_cast<uint8_t>(this->accel_->get_orientation());
       }
 #endif
-      break;
-    case AttrId::ATTR_ID_ANGLE_SENSOR_DATA:
-      value = 0;
+      ESP_LOGD(TAG, "Radar asked for the orientation, answering %u", orientation);
+      // Answers go before any pending configuration writes.
+      this->enqueue_(OpCode::OP_CODE_READ, attr_id, DataType::DATA_TYPE_UINT8, &orientation, 1, /*front=*/true);
+      return;
+    }
+    case AttrId::ATTR_ID_ANGLE_SENSOR_DATA: {
+      uint8_t angle = 0;
 #ifdef USE_AQARA_FP2_ACCEL
       if (this->accel_ != nullptr) {
-        value = this->accel_->get_output_angle_z();
+        angle = this->accel_->get_output_angle_z();
       }
 #endif
-      break;
+      ESP_LOGD(TAG, "Radar asked for the tilt angle, answering %u", angle);
+      const uint8_t value[2] = {0, angle};
+      this->enqueue_(OpCode::OP_CODE_READ, attr_id, DataType::DATA_TYPE_UINT16, value, sizeof(value), /*front=*/true);
+      return;
+    }
     default:
       ESP_LOGD(TAG, "Unhandled radar query 0x%04X", static_cast<uint16_t>(attr_id));
       return;
   }
-  // Answer before any pending configuration writes.
-  this->enqueue_(OpCode::OP_CODE_READ, attr_id, DataType::DATA_TYPE_UINT8, &value, 1, /*front=*/true);
 }
 
 void FP2Component::set_location_reporting_enabled(bool enabled) {
