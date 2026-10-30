@@ -13,6 +13,11 @@ fi
 
 status=0
 for config in tests/components/*/test*.host.yaml; do
+  # Host I2C only validates on Linux; such configs start with a "# linux-only" comment.
+  if [[ "$(uname)" != "Linux" ]] && head -1 "$config" | grep -q "^# linux-only"; then
+    echo "=== $config (skipped: linux-only)"
+    continue
+  fi
   component=$(basename "$(dirname "$config")")
   device=$(esphome config "$config" 2>/dev/null | awk '/^esphome:/{f=1} f && /^  name:/{print $2; exit}')
   build="$(dirname "$config")/.esphome/build/$device"

@@ -107,6 +107,11 @@ jobs:
       - run: pip install "esphome==$ESPHOME_MIN_VERSION"
       - run: |
           for config in tests/components/*/test*.host.yaml; do
+            # Configs that need a newer ESPHome than the minimum carry an "# esphome>=X" line
+            if grep -q "^# esphome>=" "$config"; then
+              echo "Skipping $config: $(grep "^# esphome>=" "$config")"
+              continue
+            fi
             esphome compile "$config"
           done
 
@@ -128,6 +133,8 @@ jobs:
         run: |
           esphome compile tests/components/grid_meter/test.host.yaml
           esphome compile tests/components/sunspec/test-number.host.yaml
+          esphome compile tests/components/aqara_fp2/test.host.yaml
+          esphome compile tests/components/aqara_fp2/test-location-off.host.yaml
       - name: Start host binaries
         run: |
           tests/components/grid_meter/.esphome/build/grid-meter-host/.pioenvs/grid-meter-host/program > grid_meter.log 2>&1 &
@@ -139,6 +146,8 @@ jobs:
           sleep 3
       - run: pytest tests/grid_meter/test_grid_meter.py --device-ip=127.0.0.1 --device-port=5020 -v
       - run: pytest tests/sunspec/test_sunspec.py --device-ip=127.0.0.1 --device-port=5021 --allow-writes -v
+      # Starts the binaries itself, with a fake radar on a pseudo-terminal
+      - run: pytest tests/aqara_fp2/test_aqara_fp2.py --aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build -v
       - name: Device logs
         if: always()
         run: cat grid_meter.log sunspec.log

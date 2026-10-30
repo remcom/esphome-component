@@ -4,6 +4,7 @@ A collection of [ESPHome](https://esphome.io) external components, all served fr
 
 | Component | What it does | Docs |
 |-----------|--------------|------|
+| `aqara_fp2` | Runs ESPHome on an Aqara FP2 mmWave presence sensor: presence, motion, zones and live target positions | [docs/aqara_fp2.md](docs/aqara_fp2.md) |
 | `grid_meter` | Serves DSMR P1 smart meter data as a Carlo Gavazzi EM24 over Modbus TCP, so a Victron Cerbo GX can use it as a grid meter | [docs/grid_meter.md](docs/grid_meter.md) |
 | `sunspec` | Runs a SunSpec Modbus TCP server for a solar inverter (Models 1, 101/103, 120, 123) with power-limit write-back | [docs/sunspec.md](docs/sunspec.md) |
 
@@ -23,6 +24,7 @@ external_components:
       ref: main
     refresh: 1d
     components:
+      - aqara_fp2
       - grid_meter
       - sunspec
 ```
@@ -54,8 +56,9 @@ tests/conftest.py          # Shared pytest options and Modbus TCP fixtures
 
 ## Requirements
 
-ESPHome 2026.4.0 or newer. The components use ESPHome's `socket` component and are compile-tested on
-ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and the host platform.
+ESPHome 2026.4.0 or newer. `grid_meter` and `sunspec` use ESPHome's `socket` component and are
+compile-tested on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and the host platform.
+`aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host.
 
 ## Running tests
 

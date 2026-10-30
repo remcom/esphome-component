@@ -1,0 +1,21 @@
+substitutions:
+  device_name: aqara-fp2-esp32-ard
+
+packages:
+  base: !include ../common/esp32-ard.yaml
+  aqara_fp2: !include common.yaml
+  accel: !include accel.yaml
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 890000
+
+i2c:
+  id: i2c_bus
+  scl: GPIO18
+  sda: GPIO19
+
+aqara_fp2:
+  reset_pin: GPIO13

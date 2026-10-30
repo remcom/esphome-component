@@ -8,6 +8,7 @@ A monorepo of ESPHome external components. Each component lives in `components/<
 
 | Component | Summary |
 |-----------|---------|
+| `aqara_fp2` | Aqara FP2 mmWave presence sensor: radar over UART (presence, motion, zones, target positions) plus its I2C accelerometer |
 | `grid_meter` | Emulates a Carlo Gavazzi EM24 Ethernet meter over Modbus TCP so a Victron Cerbo GX can use a DSMR P1 smart meter as a grid meter |
 | `sunspec` | SunSpec Modbus TCP server for a solar inverter, with power-limit write-back over RS485 Modbus |
 
@@ -15,13 +16,16 @@ A monorepo of ESPHome external components. Each component lives in `components/<
 
 ```
 components/
+  aqara_fp2/         # __init__.py, aqara_fp2.h/.cpp, fp2_accel.h/.cpp, entity platforms
   grid_meter/        # __init__.py, grid_meter.h, grid_meter.cpp
   sunspec/           # __init__.py, sunspec.h, sunspec.cpp
 docs/
+  aqara_fp2.md
   grid_meter.md
   sunspec.md
 tests/
   conftest.py        # --device-ip / --device-port / --allow-writes, `client`, `raw_request`, `load_component` fixtures
+  aqara_fp2/         # test_schema.py, test_aqara_fp2.py (fake radar on a pseudo-terminal)
   grid_meter/        # test_schema.py, test_grid_meter.py
   sunspec/           # test_schema.py, test_sunspec.py
   components/        # ESPHome compile-test configs (ESPHome's tests/components layout)
@@ -50,11 +54,11 @@ esphome compile tests/components/<name>/test.esp32-idf.yaml     # compile test
 pytest tests/<component>/ --device-ip=<DEVICE_IP> -v            # integration tests against a flashed device
 ```
 
-Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
+Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. The aqara_fp2 integration test starts its host builds itself (`--aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build`; it needs `test.host.yaml` and `test-location-off.host.yaml` built) and plays the radar on a pseudo-terminal linked at `/tmp/aqara-fp2-radar`. sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
 
 pytest runs with `--import-mode=importlib` (see `pyproject.toml`) because each component has its own `test_schema.py`; schema tests load a component with the `load_component` fixture.
 
-Minimum ESPHome version is 2026.4.0 (`cv.require_esphome_version` in both schemas; CI compiles the host configs on it). `requirements.txt` pins the version used for development and CI.
+Minimum ESPHome version is 2026.4.0 (`cv.require_esphome_version` in every schema; CI compiles the host configs on it). `requirements.txt` pins the version used for development and CI.
 
 ## Licensing
 
@@ -72,7 +76,7 @@ Follow https://github.com/esphome/esphome/blob/dev/AGENTS.md. Key rules for all 
 - Use `cv.All(schema, validator_fn)` for cross-field validation, `cv.Inclusive` for all-or-none groups, `cv.has_at_most_one_key` for mutually exclusive keys.
 - Strings packed into registers: ASCII only and `cv.Length(max=N)` matching the register count.
 - Required + invariant fields → constructor parameters via `cg.new_Pvariable()`, not setters.
-- Type-hint signatures (`ConfigType` from `esphome.types`); use `if (x := config.get(KEY)) is not None:` for optional keys.
+- Type-hint all signatures, test functions and fixtures included (`ConfigType` from `esphome.types`); use `if (x := config.get(KEY)) is not None:` for optional keys.
 - Automations: `automation.validate_automation({})` + `automation.build_callback_automation(...)`, no `Trigger` subclass.
 
 ### C++
@@ -94,7 +98,7 @@ Follow https://github.com/esphome/esphome/blob/dev/AGENTS.md. Key rules for all 
 
 ### Platform support
 
-Both components use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host.
+`grid_meter` and `sunspec` use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests them on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host. `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host (radar only: host I2C is Linux-only, and the host UART cannot run 890000 baud, so the baud-rate check is skipped on host).
 
 ---
 
@@ -168,3 +172,34 @@ Write-back runs only when the limit changes (`applied_limit_`); an unchanged lim
 - On ESPHome ≥ 2026.9 the write goes through the `LimitWriter` `ModbusClientDevice` on the controller's bus (failed writes are re-sent on the next command); older versions use the deprecated `ModbusCommandItem`, which is removed in 2027.3.0.
 
 **Via `on_power_limit` automation:** fires with `level` (float, 0–100 %) and `enabled` (bool).
+
+---
+
+## Component: `aqara_fp2`
+
+Runs ESPHome on an Aqara FP2 mmWave presence sensor. `FP2Component` (`Component` + `UARTDevice`) speaks the radar coprocessor's framed UART protocol at 890000 baud; `FP2Accel` (`Component` + `I2CDevice`, address 0x27, sampled every 100 ms from a gated `loop()`) reads the on-board accelerometer. Ported from the `aqara-fp2` branch of the ESPHome fork, where the accelerometer was a separate `aqara_fp2_accel` component; here it is the optional `accel:` block, because components in this repo must not depend on each other.
+
+### How it works
+
+- Frames: `0x55 0x00 0x01 seq opcode len_h len_l hdr_chk payload crc16_l crc16_h` (CRC16/MODBUS over header + payload). Opcodes: RESPONSE 0x01, WRITE 0x02, ACK 0x03, READ 0x04, REPORT 0x05. Payload starts with a 16-bit attribute ID (`AttrId`) and a data-type tag.
+- `ConfigState`: WAIT_HEARTBEAT → (heartbeat, `RADAR_SW_VERSION` report) → SENDING → DONE. The configuration is not queued: `build_config_command_(step)` generates step N (attributes, grids, map + sensitivity per zone, activation list, close/away per zone) when the previous write was ACKed. Nothing is sent before the first heartbeat.
+- One WRITE in flight (`inflight_`), sent at most `MAX_SENDS` times (`ACK_TIMEOUT_MS` apart). A failed configuration write sets a warning and returns to WAIT_HEARTBEAT (never continue half-configured); a failed runtime write only sets a warning.
+- The 8-slot queue holds ACKs and answers to radar queries (both inserted at the front) and runtime writes (location report switch). Queued commands go before configuration steps.
+- Watchdog: no valid frame for `radar_timeout` → warning, entities unknown, WAIT_HEARTBEAT. The radar's idle heartbeat interval is not confirmed on hardware, and a heartbeat in DONE is ignored, so a radar restart shorter than `radar_timeout` goes unnoticed.
+- Decoder: a gap of more than `RX_BYTE_TIMEOUT_MS` (50 ms) inside a frame resynchronizes. The CRC is computed while bytes arrive, so frames longer than `MAX_RX_PAYLOAD` are read to the end, CRC-checked and (reports) ACKed without being processed; a declared length above `MAX_RX_FRAME_PAYLOAD` (2048) is treated as a corrupt header and resynchronizes at once.
+- Location report switch: published optimistically. `location_reporting_confirmed_` holds the last state the radar ACKed; a dropped or unacknowledged write reverts to it (`revert_location_reporting_()`), clearing location entities when that state is off. While location reporting is off, targets, `target_count` and `has_target` are unknown, also across (re)configuration; with it on, configuration starts them at 0 / OFF.
+- Radar queries: `DEVICE_DIRECTION` (UINT8) / `ANGLE_SENSOR_DATA` (UINT16, as the stock firmware), answered from `FP2Accel`, or upright/0 without `accel:`. The radar asks for the tilt only at boot.
+- Presence/motion: the radar asks for its tilt once, ~1 s after it starts, and keeps the answer. A wrong answer (tilt 0 / orientation invalid because the accelerometer had no reading yet) leaves presence (0x0104) and motion (0x0103) silent and target coordinates squashed, while location reports keep coming. So with `accel:` + `reset_pin`, `setup()` defers the radar reset (`reset_pending_`) until `FP2Accel::has_reading()` (max `ACCEL_WAIT_MS`), and heartbeats before that reset do not start the configuration. The `restart_radar` button reruns the start-up. 0x0103 is a movement event (0 enter, 1 leave, 6 approach, 7 away), exposed on the `event` platform as `movement`; the `motion` binary sensors are derived (`MotionTimer`: on per event, off on leave / presence clear / `motion_timeout`). Zone motion (0x0115) values are undecoded event flags.
+- Every report except location and heartbeat is logged at debug level with its raw value (formats are reverse-engineered; hansihe/AqaraPresenceSensorFP2ReverseEngineering has stock-firmware UART captures).
+- Location reporting defaults on; with a `location_report` switch its restore mode (default `RESTORE_DEFAULT_ON`) decides the boot state.
+- Enum values carry the enum name as prefix (`OP_CODE_ACK`, `ATTR_ID_ZONE_MAP`, …) per ESPHome's naming rule.
+
+### ESPHome integration
+
+- No `AUTO_LOAD`. Zone entities are on the `binary_sensor` platform as `zone_<n>` (n = position in `zones:`), checked against the hub's zone count in the platform's `FINAL_VALIDATE_SCHEMA`. The hub's `to_code` creates the zones before its first `await`, so the platform's index-based setters always find them.
+- Numeric sensors go through the local `DedupSensor<T>` (core `Deduplicator<T>`), not `ld24xx::SensorWithDedup`, whose API changed between 2026.4 and 2026.9.
+- Accelerometer code is behind `USE_AQARA_FP2_ACCEL` (emitted only when `accel:` is configured), so radar-only configs need no `i2c`.
+- Accelerometer entities (`vibration`, `tilt_angle`, `orientation`) live on the `aqara_fp2` platforms; `require_accel_for()` resolves `aqara_fp2_accel_id` only when one of them is configured.
+- Grids: 14×14 ASCII → 40-byte map, rows 0–13, columns 2–15 of the radar's 20×16 map (`parse_ascii_grid()`).
+- `FINAL_VALIDATE_SCHEMA` requires TX+RX, 8N1 and 890000 baud (baud not enforced on host).
+- `test-accel.host.yaml` starts with `# linux-only` (host I2C only validates on Linux, so `script/clang-tidy.sh` skips it elsewhere) and `# esphome>=2026.6.0` (host I2C is newer than the minimum version, so the min-version CI job skips it). The accelerometer itself works from 2026.4.0 on ESP32.
