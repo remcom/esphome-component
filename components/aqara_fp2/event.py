@@ -26,7 +26,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config: ConfigType) -> None:
-    parent = await cg.get_variable(config[CONF_AQARA_FP2_ID])
+    hub = await cg.get_variable(config[CONF_AQARA_FP2_ID])
     if (movement_config := config.get(CONF_MOVEMENT)) is not None:
         evt = await event.new_event(movement_config, event_types=MOVEMENT_EVENT_TYPES)
-        cg.add(parent.set_movement_event(evt))
+        cg.add(hub.set_movement_event(evt))

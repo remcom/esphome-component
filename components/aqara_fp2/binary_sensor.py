@@ -75,7 +75,7 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
-def _final_validate(config: ConfigType) -> ConfigType:
+def _final_validate(config: ConfigType) -> None:
     zone_count = len(fv.full_config.get().get(DOMAIN, {}).get(CONF_ZONES, []))
     for index in range(zone_count, MAX_ZONES):
         if _zone_key(index) in config:
@@ -84,34 +84,27 @@ def _final_validate(config: ConfigType) -> ConfigType:
                 f"{DOMAIN}: zones ({zone_count} defined)",
                 path=[_zone_key(index)],
             )
-    return config
 
 
 FINAL_VALIDATE_SCHEMA = _final_validate
 
 
 async def to_code(config: ConfigType) -> None:
-    parent = await cg.get_variable(config[CONF_AQARA_FP2_ID])
-    if (presence_config := config.get(CONF_PRESENCE)) is not None:
-        sens = await binary_sensor.new_binary_sensor(presence_config)
-        cg.add(parent.set_presence_binary_sensor(sens))
-    if (motion_config := config.get(CONF_MOTION)) is not None:
-        sens = await binary_sensor.new_binary_sensor(motion_config)
-        cg.add(parent.set_motion_binary_sensor(sens))
-    if (has_target_config := config.get(CONF_HAS_TARGET)) is not None:
-        sens = await binary_sensor.new_binary_sensor(has_target_config)
-        cg.add(parent.set_target_binary_sensor(sens))
-    if (vibration_config := config.get(CONF_VIBRATION)) is not None:
-        accel = await cg.get_variable(config[CONF_AQARA_FP2_ACCEL_ID])
-        sens = await binary_sensor.new_binary_sensor(vibration_config)
-        cg.add(accel.set_vibration_binary_sensor(sens))
+    hub = await cg.get_variable(config[CONF_AQARA_FP2_ID])
+    binary_sensors = binary_sensor.sub_binary_sensors(config)
+    await binary_sensors(CONF_PRESENCE, hub.set_presence_binary_sensor)
+    await binary_sensors(CONF_MOTION, hub.set_motion_binary_sensor)
+    await binary_sensors(CONF_HAS_TARGET, hub.set_target_binary_sensor)
+    if (accel_id := config.get(CONF_AQARA_FP2_ACCEL_ID)) is not None:
+        accel = await cg.get_variable(accel_id)
+        await binary_sensors(CONF_VIBRATION, accel.set_vibration_binary_sensor)
 
     for index in range(MAX_ZONES):
         if (zone_config := config.get(_zone_key(index))) is None:
             continue
         if (presence_config := zone_config.get(CONF_PRESENCE)) is not None:
             sens = await binary_sensor.new_binary_sensor(presence_config)
-            cg.add(parent.set_zone_presence_binary_sensor(index, sens))
+            cg.add(hub.set_zone_presence_binary_sensor(index, sens))
         if (motion_config := zone_config.get(CONF_MOTION)) is not None:
             sens = await binary_sensor.new_binary_sensor(motion_config)
-            cg.add(parent.set_zone_motion_binary_sensor(index, sens))
+            cg.add(hub.set_zone_motion_binary_sensor(index, sens))

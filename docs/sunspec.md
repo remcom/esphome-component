@@ -18,7 +18,7 @@ Built for a **Solis single-phase inverter** bridged via an ESP32 (m5stack-atom, 
 - Stale-data detection: sensors that stop updating are reported as "not implemented" and the inverter state falls back to *Off*
 - Configurable port, unit address, and connection limit (up to 8 simultaneous clients)
 - Multiple server instances per device (one per port)
-- Requires ESPHome 2026.4.0 or newer. Compile-tested on ESP32 (ESP-IDF and Arduino), ESP8266 and RP2040 (Pico W); the server uses ESPHome's `socket` component, so other platforms it supports should work too
+- Requires ESPHome 2026.10.0 or newer. Compile-tested on ESP32 (ESP-IDF and Arduino), ESP8266 and RP2040 (Pico W); the server uses ESPHome's `socket` component, so other platforms it supports should work too
 
 ## Installation
 
@@ -151,7 +151,7 @@ Write `WMaxLimPct` (register 40155, scale factor -2, so `10000` = 100.00 %) and 
 
 **Revert timeout:** when `WMaxLimPct_RvrtTms` (register 40157, seconds) is set to a value other than `0` or `0xFFFF` while the limit is enabled, the limit is disabled again (`WMaxLim_Ena = 0`, full power) if no new limit command arrives within that time. Every write to `WMaxLimPct`, `WMaxLim_Ena` or `WMaxLimPct_RvrtTms` restarts the timer. This keeps the inverter from staying limited when the energy manager disappears.
 
-**Change detection:** energy managers re-send the same limit every few seconds. The write-back (number entity or register write) only runs when the limit actually changes; an unchanged limit is forwarded again at most once every 5 minutes, in case the inverter missed a write. With `modbus_controller` write-back on ESPHome 2026.9 or newer, a write that fails or gets no response is retried on the next limit command. This keeps traffic down on the RS485 bus and avoids wearing out inverters that store the limit in EEPROM.
+**Change detection:** energy managers re-send the same limit every few seconds. The write-back (number entity or register write) only runs when the limit actually changes; an unchanged limit is forwarded again at most once every 5 minutes, in case the inverter missed a write. With `modbus_controller` write-back, a write that fails or gets no response is retried on the next limit command. This keeps traffic down on the RS485 bus and avoids wearing out inverters that store the limit in EEPROM.
 
 **Via number entity (`power_limit_number_id`, recommended):**
 - When `WMaxLim_Ena = 1`: sets the number entity to the limit percentage (0–100)

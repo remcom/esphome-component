@@ -2,7 +2,7 @@
 
 The host build opens /tmp/aqara-fp2-radar as its UART; each test links that path to a fresh
 pseudo-terminal, starts the binary and plays the radar. Entity states are read from the binary's
-VERBOSE log, so this needs ESPHome >= 2026.9 (older host loggers do not flush stdout).
+VERBOSE log.
 
 Build:  esphome compile tests/components/aqara_fp2/test.host.yaml
         esphome compile tests/components/aqara_fp2/test-location-off.host.yaml

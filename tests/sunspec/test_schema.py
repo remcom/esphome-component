@@ -119,10 +119,10 @@ def test_only_one_write_back_path(schema: Callable[[ConfigType], ConfigType]) ->
         )
 
 
-def _final_validate(sunspec: ModuleType, full_config: dict, config: dict) -> dict:
+def _final_validate(sunspec: ModuleType, full_config: dict, config: dict) -> None:
     token = fv.full_config.set(full_config)
     try:
-        return sunspec.FINAL_VALIDATE_SCHEMA(config)
+        sunspec.FINAL_VALIDATE_SCHEMA(config)
     finally:
         fv.full_config.reset(token)
 
@@ -132,13 +132,11 @@ def test_duplicate_sunspec_port_rejected(sunspec: ModuleType) -> None:
     with pytest.raises(cv.Invalid, match="unique port"):
         _final_validate(sunspec, {"sunspec": [a, b]}, a)
     c = {"port": 1502}
-    assert _final_validate(sunspec, {"sunspec": [a, c]}, a)
+    _final_validate(sunspec, {"sunspec": [a, c]}, a)
 
 
 def test_port_clash_with_grid_meter_rejected(sunspec: ModuleType) -> None:
     conf = {"port": 502}
     with pytest.raises(cv.Invalid, match="grid_meter"):
         _final_validate(sunspec, {"sunspec": [conf], "grid_meter": {"port": 502}}, conf)
-    assert _final_validate(
-        sunspec, {"sunspec": [conf], "grid_meter": {"port": 5020}}, conf
-    )
+    _final_validate(sunspec, {"sunspec": [conf], "grid_meter": {"port": 5020}}, conf)

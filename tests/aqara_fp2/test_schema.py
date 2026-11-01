@@ -124,16 +124,16 @@ def test_require_accel_for(aqara_fp2: ModuleType) -> None:
 
 def _final_validate(
     platform: ModuleType, full_config: dict, config: ConfigType
-) -> ConfigType:
+) -> None:
     token = fv.full_config.set(full_config)
     try:
-        return platform.FINAL_VALIDATE_SCHEMA(config)
+        platform.FINAL_VALIDATE_SCHEMA(config)
     finally:
         fv.full_config.reset(token)
 
 
 def test_zone_entities_need_a_defined_zone(binary_sensor_platform: ModuleType) -> None:
     full_config = {"aqara_fp2": {"zones": [{"grid": []}]}}
-    assert _final_validate(binary_sensor_platform, full_config, {"zone_1": {}})
+    _final_validate(binary_sensor_platform, full_config, {"zone_1": {}})
     with pytest.raises(cv.Invalid, match="zone_2"):
         _final_validate(binary_sensor_platform, full_config, {"zone_2": {}})

@@ -56,7 +56,7 @@ tests/conftest.py          # Shared pytest options and Modbus TCP fixtures
 
 ## Requirements
 
-ESPHome 2026.4.0 or newer. `grid_meter` and `sunspec` use ESPHome's `socket` component and are
+ESPHome 2026.10.0 or newer. `grid_meter` and `sunspec` use ESPHome's `socket` component and are
 compile-tested on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and the host platform.
 `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host.
 

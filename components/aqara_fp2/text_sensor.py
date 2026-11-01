@@ -41,11 +41,9 @@ CONFIG_SCHEMA = cv.All(
 
 
 async def to_code(config: ConfigType) -> None:
-    parent = await cg.get_variable(config[CONF_AQARA_FP2_ID])
-    if (radar_version_config := config.get(CONF_RADAR_VERSION)) is not None:
-        sens = await text_sensor.new_text_sensor(radar_version_config)
-        cg.add(parent.set_radar_version_text_sensor(sens))
-    if (orientation_config := config.get(CONF_ORIENTATION)) is not None:
-        accel = await cg.get_variable(config[CONF_AQARA_FP2_ACCEL_ID])
-        sens = await text_sensor.new_text_sensor(orientation_config)
-        cg.add(accel.set_orientation_text_sensor(sens))
+    hub = await cg.get_variable(config[CONF_AQARA_FP2_ID])
+    text_sensors = text_sensor.sub_text_sensors(config)
+    await text_sensors(CONF_RADAR_VERSION, hub.set_radar_version_text_sensor)
+    if (accel_id := config.get(CONF_AQARA_FP2_ACCEL_ID)) is not None:
+        accel = await cg.get_variable(accel_id)
+        await text_sensors(CONF_ORIENTATION, accel.set_orientation_text_sensor)

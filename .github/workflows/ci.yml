@@ -13,9 +13,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.14"
   # Oldest ESPHome release the components support (cv.require_esphome_version)
-  ESPHOME_MIN_VERSION: "2026.4.0"
+  ESPHOME_MIN_VERSION: "2026.10.0"
 
 jobs:
   lint:
@@ -38,10 +38,6 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements.txt
-      - uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: platformio-host-${{ hashFiles('requirements.txt') }}
       - run: script/clang-tidy.sh
 
   schema:
@@ -125,10 +121,6 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements.txt
-      - uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: platformio-host-${{ hashFiles('requirements.txt') }}
       - name: Build host binaries
         run: |
           esphome compile tests/components/grid_meter/test.host.yaml

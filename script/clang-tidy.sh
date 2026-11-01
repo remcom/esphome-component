@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run clang-tidy (ESPHome's .clang-tidy) on every component. The compilation database
-# comes from the host builds of tests/components/<name>/test*.host.yaml, so each
-# write-back variant is analysed with its own defines.
+# comes from the host builds of tests/components/<name>/test*.host.yaml (the native host
+# toolchain writes it while compiling), so each write-back variant is analysed with its
+# own defines.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,9 +24,9 @@ for config in tests/components/*/test*.host.yaml; do
   build="$(dirname "$config")/.esphome/build/$device"
 
   echo "=== $config"
-  esphome compile --only-generate "$config" > /dev/null
-  pio run -d "$build" -t compiledb > /dev/null
-  clang-tidy -p "$build" --quiet --header-filter="components/$component/" "${extra_args[@]}" \
+  # Without the precompiled header: clang-tidy cannot read the compiler's .gch
+  ESPHOME_PCH_ENABLE=0 esphome compile "$config" > /dev/null
+  clang-tidy -p "$build/.pioenvs/$device" --quiet --header-filter="components/$component/" "${extra_args[@]}" \
     "$build"/src/esphome/components/"$component"/*.cpp || status=1
 done
 exit $status

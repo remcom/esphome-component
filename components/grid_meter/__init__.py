@@ -67,7 +67,7 @@ CONFIG_SCHEMA = cv.All(
             **_phase_schema(),
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.require_esphome_version(2026, 4, 0),
+    cv.require_esphome_version(2026, 10, 0),
 )
 
 

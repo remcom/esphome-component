@@ -156,14 +156,14 @@ CONFIG_SCHEMA = cv.All(
     )
     .extend(uart.UART_DEVICE_SCHEMA)
     .extend(cv.COMPONENT_SCHEMA),
-    cv.require_esphome_version(2026, 4, 0),
+    cv.require_esphome_version(2026, 10, 0),
 )
 
 
-def _final_validate(config: ConfigType) -> ConfigType:
+def _final_validate(config: ConfigType) -> None:
     # The host UART only supports standard baud rates, so host builds (used for clang-tidy) are
     # exempt from the radar's baud rate.
-    return uart.final_validate_device_schema(
+    uart.final_validate_device_schema(
         DOMAIN,
         baud_rate=None if CORE.is_host else RADAR_BAUD_RATE,
         require_tx=True,

@@ -11,16 +11,9 @@
 
 #ifdef USE_SUNSPEC_MODBUS_CONTROLLER
 #include "esphome/components/modbus_controller/modbus_controller.h"
-#include "esphome/core/version.h"
 #endif
 #ifdef USE_SUNSPEC_POWER_LIMIT_NUMBER
 #include "esphome/components/number/number.h"
-#endif
-
-// ModbusCommandItem / queue_command() are deprecated from 2026.9.0 (removed in 2027.3.0);
-// from then on the limit is written by our own ModbusClientDevice on the controller's bus
-#if defined(USE_SUNSPEC_MODBUS_CONTROLLER) && ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 9, 0)
-#define USE_SUNSPEC_MODBUS_CLIENT_DEVICE
 #endif
 
 namespace esphome::sunspec {
@@ -118,10 +111,8 @@ class SunspecComponent : public Component {
   void set_modbus_controller(modbus_controller::ModbusController *ctrl, uint16_t reg) {
     this->controller_ = ctrl;
     this->power_limit_register_ = reg;
-#ifdef USE_SUNSPEC_MODBUS_CLIENT_DEVICE
     this->limit_writer_.set_parent(ctrl->hub());
     this->limit_writer_.set_address(ctrl->device_address());
-#endif
   }
 #endif
 #ifdef USE_SUNSPEC_POWER_LIMIT_NUMBER
@@ -160,9 +151,7 @@ class SunspecComponent : public Component {
 #ifdef USE_SUNSPEC_MODBUS_CONTROLLER
   modbus_controller::ModbusController *controller_{nullptr};
   uint16_t power_limit_register_{0};
-#endif
-#ifdef USE_SUNSPEC_MODBUS_CLIENT_DEVICE
-  // Reports a failed limit write back to the component, so the next command re-sends it
+  // Writes the limit on the controller's bus; a failed write is reported back so the next command re-sends it
   class LimitWriter : public modbus::ModbusClientDevice {
    public:
     explicit LimitWriter(SunspecComponent *parent) : component_(parent) {}

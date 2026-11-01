@@ -25,8 +25,6 @@ CONFIG_SCHEMA = {
 
 
 async def to_code(config: ConfigType) -> None:
-    parent = await cg.get_variable(config[CONF_AQARA_FP2_ID])
-    if (location_report_config := config.get(CONF_LOCATION_REPORT)) is not None:
-        s = await switch.new_switch(location_report_config)
-        await cg.register_parented(s, config[CONF_AQARA_FP2_ID])
-        cg.add(parent.set_location_report_switch(s))
+    hub = await cg.get_variable(config[CONF_AQARA_FP2_ID])
+    switches = switch.sub_switches(config, parent=hub)
+    await switches(CONF_LOCATION_REPORT, hub.set_location_report_switch)

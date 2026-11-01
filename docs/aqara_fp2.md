@@ -20,6 +20,8 @@ external_components:
       - aqara_fp2
 ```
 
+Requires ESPHome 2026.10.0 or newer.
+
 ## Configuration
 
 The radar runs at 890000 baud, 8N1; the `uart` bus must have both TX and RX pins. At that speed

@@ -106,30 +106,25 @@ CONFIG_SCHEMA = cv.All(
 
 
 async def to_code(config: ConfigType) -> None:
-    parent = await cg.get_variable(config[CONF_AQARA_FP2_ID])
-
-    if (target_count_config := config.get(CONF_TARGET_COUNT)) is not None:
-        sens = await sensor.new_sensor(target_count_config)
-        cg.add(parent.set_target_count_sensor(sens))
-    if (radar_temperature_config := config.get(CONF_RADAR_TEMPERATURE)) is not None:
-        sens = await sensor.new_sensor(radar_temperature_config)
-        cg.add(parent.set_radar_temperature_sensor(sens))
-    if (tilt_angle_config := config.get(CONF_TILT_ANGLE)) is not None:
-        accel = await cg.get_variable(config[CONF_AQARA_FP2_ACCEL_ID])
-        sens = await sensor.new_sensor(tilt_angle_config)
-        cg.add(accel.set_tilt_angle_sensor(sens))
+    hub = await cg.get_variable(config[CONF_AQARA_FP2_ID])
+    sensors = sensor.sub_sensors(config)
+    await sensors(CONF_TARGET_COUNT, hub.set_target_count_sensor)
+    await sensors(CONF_RADAR_TEMPERATURE, hub.set_radar_temperature_sensor)
+    if (accel_id := config.get(CONF_AQARA_FP2_ACCEL_ID)) is not None:
+        accel = await cg.get_variable(accel_id)
+        await sensors(CONF_TILT_ANGLE, accel.set_tilt_angle_sensor)
 
     for n in range(MAX_TARGETS):
         if (target_config := config.get(f"target_{n + 1}")) is not None:
             if (x_config := target_config.get(CONF_X)) is not None:
-                cg.add(parent.set_target_x_sensor(n, await sensor.new_sensor(x_config)))
+                cg.add(hub.set_target_x_sensor(n, await sensor.new_sensor(x_config)))
             if (y_config := target_config.get(CONF_Y)) is not None:
-                cg.add(parent.set_target_y_sensor(n, await sensor.new_sensor(y_config)))
+                cg.add(hub.set_target_y_sensor(n, await sensor.new_sensor(y_config)))
             if (z_config := target_config.get(CONF_Z)) is not None:
-                cg.add(parent.set_target_z_sensor(n, await sensor.new_sensor(z_config)))
+                cg.add(hub.set_target_z_sensor(n, await sensor.new_sensor(z_config)))
             if (speed_config := target_config.get(CONF_SPEED)) is not None:
                 cg.add(
-                    parent.set_target_speed_sensor(
+                    hub.set_target_speed_sensor(
                         n, await sensor.new_sensor(speed_config)
                     )
                 )

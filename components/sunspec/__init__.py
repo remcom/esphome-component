@@ -132,11 +132,11 @@ CONFIG_SCHEMA = cv.All(
     ).extend(cv.COMPONENT_SCHEMA),
     cv.has_at_most_one_key(CONF_POWER_LIMIT_NUMBER_ID, CONF_MODBUS_CONTROLLER_ID),
     _validate_phases,
-    cv.require_esphome_version(2026, 4, 0),
+    cv.require_esphome_version(2026, 10, 0),
 )
 
 
-def _final_validate(config: ConfigType) -> ConfigType:
+def _final_validate(config: ConfigType) -> None:
     full = fv.full_config.get()
     ports = [conf[CONF_PORT] for conf in full.get(DOMAIN, [])]
     if ports.count(config[CONF_PORT]) > 1:
@@ -152,7 +152,6 @@ def _final_validate(config: ConfigType) -> ConfigType:
             f"sunspec and grid_meter are both configured on port {config[CONF_PORT]}; "
             "give one of them a different port"
         )
-    return config
 
 
 FINAL_VALIDATE_SCHEMA = _final_validate

@@ -58,7 +58,7 @@ Integration tests can also run against host builds (`test.host.yaml` for grid_me
 
 pytest runs with `--import-mode=importlib` (see `pyproject.toml`) because each component has its own `test_schema.py`; schema tests load a component with the `load_component` fixture.
 
-Minimum ESPHome version is 2026.4.0 (`cv.require_esphome_version` in every schema; CI compiles the host configs on it). `requirements.txt` pins the version used for development and CI.
+Minimum ESPHome version is 2026.10.0 (`cv.require_esphome_version` in every schema; CI compiles the host configs on it; a config that needs a newer release starts with an `# esphome>=X` line and that job skips it). `requirements.txt` pins the version used for development and CI.
 
 ## Licensing
 
@@ -78,6 +78,8 @@ Follow https://github.com/esphome/esphome/blob/dev/AGENTS.md. Key rules for all 
 - Required + invariant fields → constructor parameters via `cg.new_Pvariable()`, not setters.
 - Type-hint all signatures, test functions and fixtures included (`ConfigType` from `esphome.types`); use `if (x := config.get(KEY)) is not None:` for optional keys.
 - Automations: `automation.validate_automation({})` + `automation.build_callback_automation(...)`, no `Trigger` subclass.
+- Optional child entities of a hub: `sensor.sub_sensors(config)` (or `sub_binary_sensors`, `sub_text_sensors`, `sub_switches`, `sub_buttons`; `parent=hub` for `Parented<T>` entities), one call per key: `await sensors(CONF_X, hub.set_x_sensor)`. Setters that also take an index stay explicit loops.
+- `FINAL_VALIDATE_SCHEMA` functions return `None` and raise `cv.Invalid` on errors.
 
 ### C++
 
@@ -169,7 +171,7 @@ Write-back runs only when the limit changes (`applied_limit_`); an unchanged lim
 **Via direct Modbus register write (legacy; `modbus_controller_id` and `power_limit_register` must appear together):**
 - `WMaxLim_Ena = 1`: writes the limit percentage (rounded to whole %) to `power_limit_register`
 - `WMaxLim_Ena = 0`: writes `100` to restore full power
-- On ESPHome ≥ 2026.9 the write goes through the `LimitWriter` `ModbusClientDevice` on the controller's bus (failed writes are re-sent on the next command); older versions use the deprecated `ModbusCommandItem`, which is removed in 2027.3.0.
+- The write goes through the `LimitWriter` `ModbusClientDevice` on the controller's bus (failed writes are re-sent on the next command).
 
 **Via `on_power_limit` automation:** fires with `level` (float, 0–100 %) and `enabled` (bool).
 
@@ -197,9 +199,9 @@ Runs ESPHome on an Aqara FP2 mmWave presence sensor. `FP2Component` (`Component`
 ### ESPHome integration
 
 - No `AUTO_LOAD`. Zone entities are on the `binary_sensor` platform as `zone_<n>` (n = position in `zones:`), checked against the hub's zone count in the platform's `FINAL_VALIDATE_SCHEMA`. The hub's `to_code` creates the zones before its first `await`, so the platform's index-based setters always find them.
-- Numeric sensors go through the local `DedupSensor<T>` (core `Deduplicator<T>`), not `ld24xx::SensorWithDedup`, whose API changed between 2026.4 and 2026.9.
+- Numeric sensors go through the local `DedupSensor<T>` (core `Deduplicator<T>`), not `ld24xx::SensorWithDedup`, which would force-load the `ld24xx` component.
 - Accelerometer code is behind `USE_AQARA_FP2_ACCEL` (emitted only when `accel:` is configured), so radar-only configs need no `i2c`.
 - Accelerometer entities (`vibration`, `tilt_angle`, `orientation`) live on the `aqara_fp2` platforms; `require_accel_for()` resolves `aqara_fp2_accel_id` only when one of them is configured.
 - Grids: 14×14 ASCII → 40-byte map, rows 0–13, columns 2–15 of the radar's 20×16 map (`parse_ascii_grid()`).
 - `FINAL_VALIDATE_SCHEMA` requires TX+RX, 8N1 and 890000 baud (baud not enforced on host).
-- `test-accel.host.yaml` starts with `# linux-only` (host I2C only validates on Linux, so `script/clang-tidy.sh` skips it elsewhere) and `# esphome>=2026.6.0` (host I2C is newer than the minimum version, so the min-version CI job skips it). The accelerometer itself works from 2026.4.0 on ESP32.
+- `test-accel.host.yaml` starts with `# linux-only` (host I2C only validates on Linux, so `script/clang-tidy.sh` skips it elsewhere).

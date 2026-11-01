@@ -757,21 +757,15 @@ void SunspecComponent::apply_power_limit_() {
   if (this->controller_ != nullptr) {
     // Direct Modbus register write; 100 restores full power
     uint16_t write_val = enabled ? static_cast<uint16_t>(std::lround(pct)) : 100;
-#ifdef USE_SUNSPEC_MODBUS_CLIENT_DEVICE
     if (!this->limit_writer_.write_single_register(this->power_limit_register_, write_val))
       this->on_limit_write_failed_("refused by the Modbus bus (queue full?)");
-#else
-    auto cmd = modbus_controller::ModbusCommandItem::create_write_single_command(
-        this->controller_, this->power_limit_register_, write_val);
-    this->controller_->queue_command(cmd);
-#endif
     return;
   }
 #endif
   // Trigger-only setups are valid; on_power_limit automations were already fired above
 }
 
-#ifdef USE_SUNSPEC_MODBUS_CLIENT_DEVICE
+#ifdef USE_SUNSPEC_MODBUS_CONTROLLER
 void SunspecComponent::on_limit_write_failed_(const char *reason) {
   ESP_LOGW(TAG, "Power limit write to register %u %s; will retry on the next limit command",
            this->power_limit_register_, reason);

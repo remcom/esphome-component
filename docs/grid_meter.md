@@ -152,7 +152,7 @@ With DSMR, use the per-phase `power_delivered_l1/l2/l3` and `power_returned_l1/l
 
 ## Requirements
 
-- ESPHome 2026.4.0 or newer
+- ESPHome 2026.10.0 or newer
 - A network-capable platform. Compile-tested on ESP32 (ESP-IDF and Arduino), ESP8266 and RP2040 (Pico W); the server uses ESPHome's `socket` component, so other platforms it supports should work too
 - DSMR P1 component providing the sensor data
 - `id:` fields on all sensor references used in the `grid_meter:` block

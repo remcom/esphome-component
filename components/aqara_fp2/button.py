@@ -24,8 +24,6 @@ CONFIG_SCHEMA = {
 
 
 async def to_code(config: ConfigType) -> None:
-    parent = await cg.get_variable(config[CONF_AQARA_FP2_ID])
-    if (restart_config := config.get(CONF_RESTART_RADAR)) is not None:
-        b = await button.new_button(restart_config)
-        await cg.register_parented(b, config[CONF_AQARA_FP2_ID])
-        cg.add(parent.set_restart_radar_button(b))
+    hub = await cg.get_variable(config[CONF_AQARA_FP2_ID])
+    buttons = button.sub_buttons(config, parent=hub)
+    await buttons(CONF_RESTART_RADAR, hub.set_restart_radar_button)
