@@ -10,6 +10,7 @@ A monorepo of ESPHome external components. Each component lives in `components/<
 |-----------|---------|
 | `aqara_fp2` | Aqara FP2 mmWave presence sensor: radar over UART (presence, motion, zones, target positions) plus its I2C accelerometer |
 | `grid_meter` | Emulates a Carlo Gavazzi EM24 Ethernet meter over Modbus TCP so a Victron Cerbo GX can use a DSMR P1 smart meter as a grid meter |
+| `immich` | Slideshow of random photos from an Immich album, loaded into an `online_image` |
 | `sunspec` | SunSpec Modbus TCP server for a solar inverter, with power-limit write-back over RS485 Modbus |
 
 ## Repository Structure
@@ -18,15 +19,18 @@ A monorepo of ESPHome external components. Each component lives in `components/<
 components/
   aqara_fp2/         # __init__.py, aqara_fp2.h/.cpp, fp2_accel.h/.cpp, entity platforms
   grid_meter/        # __init__.py, grid_meter.h, grid_meter.cpp
+  immich/            # __init__.py, immich.h, immich.cpp
   sunspec/           # __init__.py, sunspec.h, sunspec.cpp
 docs/
   aqara_fp2.md
   grid_meter.md
+  immich.md
   sunspec.md
 tests/
   conftest.py        # --device-ip / --device-port / --allow-writes, `client`, `raw_request`, `load_component` fixtures
   aqara_fp2/         # test_schema.py, test_aqara_fp2.py (fake radar on a pseudo-terminal)
   grid_meter/        # test_schema.py, test_grid_meter.py
+  immich/            # test_schema.py
   sunspec/           # test_schema.py, test_sunspec.py
   components/        # ESPHome compile-test configs (ESPHome's tests/components layout)
     common/          # per-platform base: esp32-idf, esp32-ard, esp8266-ard, rp2040-ard, host
@@ -100,7 +104,7 @@ Follow https://github.com/esphome/esphome/blob/dev/AGENTS.md. Key rules for all 
 
 ### Platform support
 
-`grid_meter` and `sunspec` use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests them on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host. `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host (radar only: host I2C is Linux-only, and the host UART cannot run 890000 baud, so the baud-rate check is skipped on host).
+`grid_meter` and `sunspec` use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests them on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host. `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host (radar only: host I2C is Linux-only, and the host UART cannot run 890000 baud, so the baud-rate check is skipped on host). `immich` is compile-tested on ESP32 (ESP-IDF and Arduino) only: `image:` requires a display, so it has no host config and `script/clang-tidy.sh` does not cover it.
 
 ---
 
@@ -205,3 +209,16 @@ Runs ESPHome on an Aqara FP2 mmWave presence sensor. `FP2Component` (`Component`
 - Grids: 14×14 ASCII → 40-byte map, rows 0–13, columns 2–15 of the radar's 20×16 map (`parse_ascii_grid()`).
 - `FINAL_VALIDATE_SCHEMA` requires TX+RX, 8N1 and 890000 baud (baud not enforced on host).
 - `test-accel.host.yaml` starts with `# linux-only` (host I2C only validates on Linux, so `script/clang-tidy.sh` skips it elsewhere).
+
+---
+
+## Component: `immich`
+
+Slideshow of photos from an Immich album. Ported from the `immich` branch of the ESPHome fork. `Immich` (`PollingComponent` + `Parented<http_request::HttpRequestComponent>`) drives a linked `online_image` (`image:` platform).
+
+### How it works
+
+- `setup()` allocates the 4 KiB response buffer (`MAX_RESPONSE_SIZE`, `RAMAllocator`), adds `x-api-key` to the `online_image` request headers and stops the poller: the slideshow is idle until `immich.start`.
+- `show_next_()`: skipped while the `online_image` is still decoding. Sends a blocking `POST /api/search/random` (body built in Python by `search_body()`: album id, `size: 1`, `type: IMAGE`, no EXIF/people), reads the response with `http_read_loop_result()`, parses only `[0].id` (ArduinoJson filter), checks it is a 36-char UUID, then sets the image URL to `<base>/api/assets/<id>/thumbnail?size=preview` (string reserved in `setup()`, prefix kept) and calls `update()` on the image.
+- Errors (request failed, HTTP status, truncated/oversized response, JSON error, no asset) set a warning; a successful pick clears it.
+- Actions `immich.start` / `immich.stop` / `immich.next_image` and condition `immich.is_running`; `next_image` does not change the running state. `MULTI_CONF`.

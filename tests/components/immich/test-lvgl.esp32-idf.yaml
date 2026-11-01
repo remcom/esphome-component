@@ -1,0 +1,44 @@
+# online_image shown in an LVGL image widget, the common photo-frame setup
+substitutions:
+  device_name: immich-lvgl-esp32-idf
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+  immich: !include common.yaml
+
+spi:
+  id: spi_bus
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+  miso_pin: GPIO19
+
+display:
+  - platform: ili9xxx
+    spi_id: spi_bus
+    id: immich_display
+    model: ili9342
+    cs_pin: GPIO5
+    dc_pin: GPIO13
+    reset_pin: GPIO21
+    invert_colors: true
+    auto_clear_enabled: false
+    update_interval: never
+
+lvgl:
+  displays: immich_display
+  on_idle:
+    timeout: 60s
+    then:
+      - if:
+          condition:
+            not:
+              immich.is_running: my_immich
+          then:
+            - immich.start: my_immich
+  pages:
+    - id: slideshow_page
+      widgets:
+        - image:
+            id: slideshow_widget
+            align: center
+            src: slideshow_image
