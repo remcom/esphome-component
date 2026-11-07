@@ -20,9 +20,11 @@ substitutions:
   friendly_name: ReSpeaker Lite
   # Git ref of remcom/esphome-component that provides the respeaker_lite component
   esphome_component_ref: main
-  # XMOS firmware flashed by the ESP32 when the XMOS runs another version.
-  # url, version and md5 belong together: a wrong version reflashes on every boot.
-  xmos_firmware_url: https://github.com/formatBCE/Respeaker-Lite-ESPHome-integration/raw/2026.10.4/respeaker_lite_i2s_dfu_firmware_48k_v1.1.0.bin
+  # XMOS firmware flashed by the ESP32 when the XMOS runs another version
+  # (Seeed's 48 kHz I2S firmware, a copy in this repository at the same ref as
+  # the component). url, version and md5 belong together: a wrong version
+  # reflashes on every boot.
+  xmos_firmware_url: https://github.com/remcom/esphome-component/raw/${esphome_component_ref}/firmware/respeaker_lite/respeaker_lite_i2s_dfu_firmware_48k_v1.1.0.bin
   xmos_firmware_version: "1.1.0"
   xmos_firmware_md5: 9297155d1bf3eb21a9d4db52a89ea0c6
 

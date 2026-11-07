@@ -54,6 +54,7 @@ ref: main
 components/<name>/         # ESPHome component: __init__.py (schema + codegen), .h/.cpp (runtime)
 docs/<name>.md             # User documentation per component
 examples/<name>/           # Ready-to-use device configurations
+firmware/<name>/           # Third-party firmware a component flashes (with source and checksum)
 tests/<name>/              # Schema tests (no hardware) and integration tests (live device or host build)
 tests/components/<name>/   # Compile-test configurations per platform
 tests/conftest.py          # Shared pytest options and Modbus TCP fixtures

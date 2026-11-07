@@ -77,7 +77,7 @@ respeaker_lite:
   i2c_id: internal_i2c
   reset_pin: GPIO2
   firmware:
-    url: https://github.com/formatBCE/Respeaker-Lite-ESPHome-integration/raw/2026.10.4/respeaker_lite_i2s_dfu_firmware_48k_v1.1.0.bin
+    url: https://github.com/remcom/esphome-component/raw/main/firmware/respeaker_lite/respeaker_lite_i2s_dfu_firmware_48k_v1.1.0.bin
     version: "1.1.0"
     md5: 9297155d1bf3eb21a9d4db52a89ea0c6
     on_begin:
@@ -116,7 +116,8 @@ text_sensor:
 ### `firmware`
 
 The firmware is downloaded (or read) at compile time, checked against `md5`, and embedded in the
-ESP32 image (about 270 KB for v1.1.0).
+ESP32 image (about 270 KB for v1.1.0). This repository has a copy of Seeed's v1.1.0 48 kHz I2S firmware in
+[`firmware/respeaker_lite/`](../firmware/respeaker_lite), with its source and checksum.
 
 | Key | Default | Description |
 |-----|---------|-------------|

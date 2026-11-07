@@ -23,6 +23,8 @@ components/
   immich/            # __init__.py, immich.h, immich.cpp
   respeaker_lite/    # __init__.py, respeaker_lite.h/.cpp, binary_sensor.py, text_sensor.py
   sunspec/           # __init__.py, sunspec.h, sunspec.cpp
+firmware/
+  respeaker_lite/    # Seeed's XMOS firmware .bin + README (source, md5)
 docs/
   aqara_fp2.md
   grid_meter.md
@@ -72,7 +74,7 @@ Minimum ESPHome version is 2026.10.0 (`cv.require_esphome_version` in every sche
 
 ## Licensing
 
-Same dual license as ESPHome (see `LICENSE`): C/C++ files (`.c`, `.cpp`, `.h`, `.hpp`, `.tcc`, `.ino`) are GPLv3, Python and everything else is MIT.
+Same dual license as ESPHome (see `LICENSE`): C/C++ files (`.c`, `.cpp`, `.h`, `.hpp`, `.tcc`, `.ino`) are GPLv3, Python and everything else is MIT. Exception: third-party binaries in `firmware/` (Seeed's XMOS firmware for `respeaker_lite`, see `firmware/respeaker_lite/README.md`) keep their authors' terms.
 
 ## ESPHome Component Standards
 
@@ -249,5 +251,5 @@ XMOS XU316 audio processor of the Seeed ReSpeaker Lite (XIAO ESP32-S3), over I2C
 
 ### Example configs
 
-`examples/respeaker_lite/respeaker-lite-base.yaml` is a remote package (loads the component from `github://remcom/esphome-component@${esphome_component_ref}`) and `respeaker-lite.yaml` the thin device config. The XMOS firmware URL points at the upstream repo's tag 2026.10.4 (md5 verified). The example carries the owner's device changes from `../esphomedevices` (`common/respeaker-satellite-base.yaml`, `media-player-sendspin.yaml`): full-duplex I2S bus, `prefer_internal_ram`, Sendspin with pairing code, `announcement_volume` + Announce volume number, unducking in `on_state` (not `on_idle`: music keeps playing), volume 0.4–0.85, resampler task stacks in internal RAM, Voice PE FLAC sounds, timers with the stop word. Fleet-only settings (NVS encryption, network policy, logger levels, `flash_chip`, boot volume) stay in that repo. The examples are not in the CI compile matrix (the base package fetches the component from GitHub); to check a change, copy both into a scratch dir, point `external_components` at the local `components/` and `packages` at the local base, then `esphome config` / `esphome compile`.
+`examples/respeaker_lite/respeaker-lite-base.yaml` is a remote package (loads the component from `github://remcom/esphome-component@${esphome_component_ref}`) and `respeaker-lite.yaml` the thin device config. The XMOS firmware URL points at this repo's copy, `firmware/respeaker_lite/respeaker_lite_i2s_dfu_firmware_48k_v1.1.0.bin`, at `${esphome_component_ref}` (byte-identical to Seeed's `..._48k_v1.1.0_ch0-asr_ch1-mww.bin`, md5 9297155d1bf3eb21a9d4db52a89ea0c6). A new firmware version gets a new file name; never replace the file in place, or pinned configs fail their md5 check. The example carries the owner's device changes from `../esphomedevices` (`common/respeaker-satellite-base.yaml`, `media-player-sendspin.yaml`): full-duplex I2S bus, `prefer_internal_ram`, Sendspin with pairing code, `announcement_volume` + Announce volume number, unducking in `on_state` (not `on_idle`: music keeps playing), volume 0.4–0.85, resampler task stacks in internal RAM, Voice PE FLAC sounds, timers with the stop word. Fleet-only settings (NVS encryption, network policy, logger levels, `flash_chip`, boot volume) stay in that repo. The examples are not in the CI compile matrix (the base package fetches the component from GitHub); to check a change, copy both into a scratch dir, point `external_components` at the local `components/` and `packages` at the local base, then `esphome config` / `esphome compile`.
 
