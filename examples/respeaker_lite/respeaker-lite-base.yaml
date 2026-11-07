@@ -1,0 +1,781 @@
+# =============================================================================
+# Seeed ReSpeaker Lite Voice Kit (XIAO ESP32-S3) as a Home Assistant voice satellite
+#
+# Package with everything except the network settings: the board, the XMOS audio
+# processor (respeaker_lite component), the microphones, the speaker, the LED,
+# the user button, wake word detection, the voice assistant with timers, and a
+# media player that also plays Sendspin (Music Assistant multi-room) streams.
+#
+# Load it from a device config, see respeaker-lite.yaml next to this file:
+#
+#   packages:
+#     respeaker_lite: github://remcom/esphome-component/examples/respeaker_lite/respeaker-lite-base.yaml@main
+#
+# Based on formatBCE/Respeaker-Lite-ESPHome-integration. Do not change the pins:
+# the board layout sets them. Needs ESPHome 2026.11 or newer.
+# =============================================================================
+
+substitutions:
+  name: respeaker-lite
+  friendly_name: ReSpeaker Lite
+  # Git ref of remcom/esphome-component that provides the respeaker_lite component
+  esphome_component_ref: main
+  # XMOS firmware flashed by the ESP32 when the XMOS runs another version.
+  # url, version and md5 belong together: a wrong version reflashes on every boot.
+  xmos_firmware_url: https://github.com/formatBCE/Respeaker-Lite-ESPHome-integration/raw/2026.10.4/respeaker_lite_i2s_dfu_firmware_48k_v1.1.0.bin
+  xmos_firmware_version: "1.1.0"
+  xmos_firmware_md5: 9297155d1bf3eb21a9d4db52a89ea0c6
+
+  # Media player volume range: the speaker amplifier is loud, so 0 % and 100 %
+  # are mapped to these
+  volume_min: "0.4"
+  volume_max: "0.85"
+  # Volume (%) of an announcement that starts while nothing plays, until the
+  # Announce volume number is changed
+  announcement_volume_initial: "50"
+
+  # Sounds of the Home Assistant Voice PE (FLAC: the pipelines already decode FLAC)
+  wake_word_triggered_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac
+  mute_switch_on_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_on.flac
+  mute_switch_off_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_off.flac
+  timer_finished_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac
+
+  # Voice assistant phases, shown by the LED (script update_led)
+  phase_idle: "1"
+  phase_listening: "2"
+  phase_thinking: "3"
+  phase_replying: "4"
+  phase_not_ready: "10"
+  phase_error: "11"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.11.0
+  on_boot:
+    priority: 375
+    then:
+      - script.execute: update_led
+  on_shutdown:
+    then:
+      # Prevents a loud pop on a software restart
+      - respeaker_lite.mute_speaker: respeaker
+
+external_components:
+  - source: github://remcom/esphome-component@${esphome_component_ref}
+    components: [respeaker_lite]
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 8MB
+  cpu_frequency: 240MHz
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
+      CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB: "y"
+      # Run instructions and read-only data from PSRAM: considerably speeds up micro_wake_word
+      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+
+psram:
+  mode: octal
+  speed: 80MHz
+  ignore_not_found: false
+
+logger:
+
+api:
+  actions:
+    - action: start_va
+      then:
+        - voice_assistant.start:
+    - action: stop_va
+      then:
+        - voice_assistant.stop:
+
+globals:
+  - id: va_phase
+    type: int
+    restore_value: false
+    initial_value: ${phase_not_ready}
+
+# ----------------------------------------------------------------------------
+# XMOS XU316 audio processor (echo cancellation, beamforming, hardware mute)
+# ----------------------------------------------------------------------------
+
+i2c:
+  - id: internal_i2c
+    sda: GPIO5
+    scl: GPIO6
+    frequency: 400kHz
+
+respeaker_lite:
+  id: respeaker
+  i2c_id: internal_i2c
+  reset_pin: GPIO2
+  firmware:
+    url: ${xmos_firmware_url}
+    version: ${xmos_firmware_version}
+    md5: ${xmos_firmware_md5}
+    on_begin:
+      - light.turn_on: {id: led, brightness: 50%, red: 100%, green: 100%, blue: 100%, effect: Slow Pulse}
+    on_end:
+      - light.turn_on: {id: led, brightness: 50%, red: 0%, green: 100%, blue: 0%, effect: Fast Pulse}
+      - delay: 3s
+      - script.execute: update_led
+    on_error:
+      - light.turn_on: {id: led, brightness: 50%, red: 100%, green: 0%, blue: 0%, effect: Fast Pulse}
+
+binary_sensor:
+  - platform: respeaker_lite
+    mic_mute:
+      id: mic_muted
+      internal: true
+      on_state:
+        - script.execute: update_led
+
+  - platform: gpio
+    id: user_button
+    name: User button
+    pin:
+      number: GPIO3
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 50ms
+    on_click:
+      - min_length: 50ms
+        max_length: 1s
+        then:
+          # Stops the first of: a ringing timer, the voice assistant, an
+          # announcement, music. Otherwise starts the voice assistant.
+          - if:
+              condition:
+                switch.is_on: timer_ringing
+              then:
+                - switch.turn_off: timer_ringing
+              else:
+                - if:
+                    condition:
+                      voice_assistant.is_running:
+                    then:
+                      - voice_assistant.stop:
+                    else:
+                      - if:
+                          condition:
+                            media_player.is_announcing: external_media_player
+                          then:
+                            - media_player.stop:
+                                id: external_media_player
+                                announcement: true
+                          else:
+                            - if:
+                                condition:
+                                  media_player.is_playing: external_media_player
+                                then:
+                                  - media_player.pause: external_media_player
+                                else:
+                                  - if:
+                                      condition:
+                                        switch.is_off: mic_mute
+                                      then:
+                                        - voice_assistant.start:
+
+text_sensor:
+  - platform: respeaker_lite
+    firmware_version:
+      name: XMOS firmware version
+  # Shows a fresh 6-digit code to enter in Music Assistant when pairing
+  - platform: sendspin
+    id: sendspin_pairing_code
+    name: Sendspin pairing code
+    type: pairing_code
+
+switch:
+  # The XMOS toggles its hardware mic mute on a pulse on this pin (the mute button does the same)
+  - platform: gpio
+    id: mic_mute_toggle
+    internal: true
+    pin:
+      number: GPIO4
+      inverted: true
+    on_turn_on:
+      - delay: 300ms
+      - switch.turn_off: mic_mute_toggle
+
+  # Mic mute as reported by the XMOS; turning it on or off pulses the toggle pin
+  - platform: template
+    id: mic_mute
+    name: Mic mute
+    icon: mdi:microphone-off
+    lambda: return id(mic_muted).state;
+    turn_on_action:
+      - if:
+          condition:
+            binary_sensor.is_off: mic_muted
+          then:
+            - switch.turn_on: mic_mute_toggle
+    turn_off_action:
+      - if:
+          condition:
+            binary_sensor.is_on: mic_muted
+          then:
+            - switch.turn_on: mic_mute_toggle
+    on_turn_on:
+      - if:
+          condition:
+            # Not for the state published at boot
+            - switch.is_on: mute_sound
+            - lambda: return id(va_phase) != ${phase_not_ready};
+          then:
+            - script.execute: {id: play_sound, priority: false, sound_file: mute_switch_on_sound}
+    on_turn_off:
+      - if:
+          condition:
+            # Not for the state published at boot
+            - switch.is_on: mute_sound
+            - lambda: return id(va_phase) != ${phase_not_ready};
+          then:
+            - script.execute: {id: play_sound, priority: false, sound_file: mute_switch_off_sound}
+
+  - platform: template
+    id: wake_sound
+    name: Wake sound
+    icon: mdi:bullhorn
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
+    id: mute_sound
+    name: Mute sound
+    icon: mdi:bullhorn
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  # On while a finished timer rings
+  - platform: template
+    id: timer_ringing
+    optimistic: true
+    internal: true
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 20
+          duration: 0s
+      - micro_wake_word.enable_model: stop
+      - media_player.repeat_one:
+          id: external_media_player
+          announcement: true
+      - speaker_source.set_playlist_delay:
+          id: external_media_player
+          pipeline: announcement
+          delay: 500ms
+      - script.execute: {id: play_sound, priority: true, sound_file: timer_finished_sound}
+      - script.execute: ring_timeout
+      - script.execute: update_led
+    on_turn_off:
+      - script.stop: ring_timeout
+      - micro_wake_word.disable_model: stop
+      - media_player.repeat_off:
+          id: external_media_player
+          announcement: true
+      - speaker_source.set_playlist_delay:
+          id: external_media_player
+          pipeline: announcement
+          delay: 0ms
+      - if:
+          condition:
+            media_player.is_announcing: external_media_player
+          then:
+            - media_player.stop:
+                id: external_media_player
+                announcement: true
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 0
+          duration: 1s
+      - script.execute: update_led
+
+# ----------------------------------------------------------------------------
+# Audio: the XMOS drives the I2S clocks at 48 kHz for microphones and speaker
+# ----------------------------------------------------------------------------
+
+i2s_audio:
+  # One full-duplex bus: microphones and speaker share the clocks the XMOS drives
+  - id: i2s_bus
+    full_duplex: true
+    i2s_lrclk_pin: GPIO7
+    i2s_bclk_pin: GPIO8
+    i2s_mclk_pin: GPIO9
+
+microphone:
+  # Channel 0: processed for speech recognition; channel 1: processed for wake word
+  - platform: i2s_audio
+    id: i2s_mics
+    i2s_audio_id: i2s_bus
+    i2s_din_pin: GPIO44
+    adc_type: external
+    pdm: false
+    sample_rate: 48000
+    bits_per_sample: 32bit
+    i2s_mode: secondary
+    channel: stereo
+  # Wake word detection and the voice assistant need 16 kHz
+  - platform: resampler
+    id: mics_16k
+    sample_rate: 16000
+    microphone:
+      microphone: i2s_mics
+      channels: [0, 1]
+
+audio_dac:
+  - platform: aic3204
+    id: aic3204_dac
+    i2c_id: internal_i2c
+
+speaker:
+  - platform: i2s_audio
+    id: i2s_audio_speaker
+    i2s_audio_id: i2s_bus
+    i2s_dout_pin: GPIO43
+    i2s_mode: secondary
+    sample_rate: 48000
+    bits_per_sample: 32bit
+    dac_type: external
+    channel: stereo
+    timeout: never
+    buffer_duration: 100ms
+    audio_dac: aic3204_dac
+
+  # Mixes announcements over media; both inputs need the same sample rate
+  - platform: mixer
+    id: mixing_speaker
+    output_speaker: i2s_audio_speaker
+    num_channels: 2
+    task_stack_in_psram: true
+    source_speakers:
+      - id: announcement_mixing_input
+        timeout: never
+      - id: media_mixing_input
+        timeout: never
+
+  - platform: resampler
+    id: announcement_resampling_speaker
+    output_speaker: announcement_mixing_input
+    task_stack_in_psram: false
+    sample_rate: 48000
+    bits_per_sample: 16
+  - platform: resampler
+    id: media_resampling_speaker
+    output_speaker: media_mixing_input
+    task_stack_in_psram: false
+    sample_rate: 48000
+    bits_per_sample: 16
+
+audio_file:
+  - id: wake_word_triggered_sound
+    file: ${wake_word_triggered_sound_file}
+  - id: mute_switch_on_sound
+    file: ${mute_switch_on_sound_file}
+  - id: mute_switch_off_sound
+    file: ${mute_switch_off_sound_file}
+  - id: timer_finished_sound
+    file: ${timer_finished_sound_file}
+
+# Sendspin: Music Assistant multi-room playback
+sendspin:
+  id: sendspin_hub
+  task_stack_in_psram: false
+
+media_source:
+  - platform: audio_file
+    id: audio_file_announcement_source
+  - platform: audio_http
+    id: http_announcement_source
+    buffer_size: 250000
+  - platform: audio_http
+    id: http_media_source
+    buffer_size: 500000
+  - platform: sendspin
+    id: sendspin_media_source
+    sendspin_id: sendspin_hub
+    sample_rate: 48000
+    # The AIC3204 DAC, as configured, delays audio by 480 us; keeps multi-room in sync
+    fixed_delay: 480us
+    codecs: [flac, opus, pcm]
+
+media_player:
+  # Needed by the Sendspin protocol for grouping; not useful in Home Assistant
+  - platform: sendspin
+    id: sendspin_group_media_player
+    name: Sendspin group
+    internal: true
+  - platform: speaker_source
+    id: external_media_player
+    name: Media player
+    volume_increment: 0.05
+    volume_min: ${volume_min}
+    volume_max: ${volume_max}
+    # An announcement on an idle player plays at this volume; over music it
+    # keeps the music volume and ducks the music instead
+    announcement_volume: ${announcement_volume_initial}%
+    announcement_pipeline:
+      speaker: announcement_resampling_speaker
+      format: FLAC
+      num_channels: 1
+      sample_rate: 48000
+      sources:
+        - audio_file_announcement_source
+        - http_announcement_source
+    media_pipeline:
+      speaker: media_resampling_speaker
+      format: FLAC
+      num_channels: 2
+      sample_rate: 48000
+      sources:
+        - http_media_source
+        - sendspin_media_source
+    on_announcement:
+      - mixer_speaker.apply_ducking:
+          id: media_mixing_input
+          decibel_reduction: 20
+          duration: 0s
+    on_state:
+      # Lift the ducking when the announcement is over. on_state, not on_idle:
+      # music keeps playing underneath, so the player does not go idle. Stays
+      # ducked while a timer rings or the voice assistant runs.
+      - if:
+          condition:
+            - not:
+                media_player.is_announcing: external_media_player
+            - switch.is_off: timer_ringing
+            - not:
+                voice_assistant.is_running:
+          then:
+            - mixer_speaker.apply_ducking:
+                id: media_mixing_input
+                decibel_reduction: 0
+                duration: 1s
+
+number:
+  # Runtime control of announcement_volume; on_value also pushes the restored value at boot
+  - platform: template
+    id: announce_volume
+    name: Announce volume
+    icon: mdi:volume-source
+    entity_category: config
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    restore_value: true
+    initial_value: ${announcement_volume_initial}
+    optimistic: true
+    on_value:
+      - speaker_source.set_announcement_volume:
+          id: external_media_player
+          volume: !lambda return x / 100.0f;
+
+button:
+  # After 20 wrong pairing codes the hub refuses attempts until this is pressed
+  - platform: template
+    id: sendspin_pairing_reset
+    name: Sendspin pairing reset
+    entity_category: config
+    on_press:
+      - sendspin.confirm_pairing_window:
+
+# ----------------------------------------------------------------------------
+# Wake word and voice assistant
+# ----------------------------------------------------------------------------
+
+micro_wake_word:
+  id: mww
+  # Model arenas in internal RAM: faster inference than PSRAM
+  prefer_internal_ram: true
+  microphone:
+    microphone: mics_16k
+    channels: 1
+    gain_factor: 4
+  stop_after_detection: false
+  models:
+    - model: okay_nabu
+      id: okay_nabu
+    - model: hey_jarvis
+      id: hey_jarvis
+    - model: hey_mycroft
+      id: hey_mycroft
+    # "Stop": only on while a timer rings or the assistant answers
+    - model: https://github.com/OHF-Voice/micro-wake-word/releases/download/stop/stop.json
+      id: stop
+      internal: true
+  vad:
+    probability_cutoff: 0.05
+  on_wake_word_detected:
+    - if:
+        condition:
+          switch.is_on: timer_ringing
+        then:
+          - switch.turn_off: timer_ringing
+        else:
+          - if:
+              condition:
+                voice_assistant.is_running:
+              then:
+                - voice_assistant.stop:
+              else:
+                - if:
+                    condition:
+                      media_player.is_announcing: external_media_player
+                    then:
+                      - media_player.stop:
+                          id: external_media_player
+                          announcement: true
+                    else:
+                      - if:
+                          condition:
+                            switch.is_on: wake_sound
+                          then:
+                            - script.execute: {id: play_sound, priority: true, sound_file: wake_word_triggered_sound}
+                            - delay: 300ms
+                      - voice_assistant.start:
+                          wake_word: !lambda return wake_word;
+
+select:
+  - platform: template
+    id: wake_word_sensitivity
+    name: Wake word sensitivity
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: Slightly sensitive
+    options:
+      - Slightly sensitive
+      - Moderately sensitive
+      - Very sensitive
+    on_value:
+      # Cutoffs (uint8) tuned on the Dinner Party Corpus for okay_nabu@20241226.3, hey_jarvis@v2, hey_mycroft@v2
+      - lambda: |-
+          if (x == "Slightly sensitive") {
+            id(okay_nabu).set_probability_cutoff(217);    // 0.85
+            id(hey_jarvis).set_probability_cutoff(247);   // 0.97
+            id(hey_mycroft).set_probability_cutoff(253);  // 0.99
+          } else if (x == "Moderately sensitive") {
+            id(okay_nabu).set_probability_cutoff(176);    // 0.69
+            id(hey_jarvis).set_probability_cutoff(235);   // 0.92
+            id(hey_mycroft).set_probability_cutoff(242);  // 0.95
+          } else {
+            id(okay_nabu).set_probability_cutoff(143);    // 0.56
+            id(hey_jarvis).set_probability_cutoff(212);   // 0.83
+            id(hey_mycroft).set_probability_cutoff(237);  // 0.93
+          }
+
+voice_assistant:
+  id: va
+  microphone:
+    microphone: mics_16k
+    channels: 0
+  media_player: external_media_player
+  micro_wake_word: mww
+  use_wake_word: false
+  # The XMOS already does noise suppression and gain control
+  noise_suppression_level: 0
+  auto_gain: 0 dbfs
+  volume_multiplier: 1
+  on_client_connected:
+    - micro_wake_word.start:
+    - lambda: id(va_phase) = ${phase_idle};
+    - script.execute: update_led
+  on_client_disconnected:
+    - voice_assistant.stop:
+    - lambda: id(va_phase) = ${phase_not_ready};
+    - script.execute: update_led
+  on_start:
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 20
+        duration: 0s
+  on_listening:
+    - lambda: id(va_phase) = ${phase_listening};
+    - script.execute: update_led
+  on_stt_vad_end:
+    - lambda: id(va_phase) = ${phase_thinking};
+    - script.execute: update_led
+  on_intent_progress:
+    - if:
+        condition:
+          # A non-empty x: a streaming TTS URL went to the media player
+          lambda: return !x.empty();
+        then:
+          - lambda: id(va_phase) = ${phase_replying};
+          - script.execute: update_led
+          - script.execute: activate_stop_word_once
+  on_tts_start:
+    - if:
+        condition:
+          lambda: return id(va_phase) != ${phase_replying};
+        then:
+          - lambda: id(va_phase) = ${phase_replying};
+          - script.execute: update_led
+          - script.execute: activate_stop_word_once
+  on_error:
+    - if:
+        condition:
+          lambda: return code != "duplicate_wake_up_detected" && code != "stt-no-text-recognized";
+        then:
+          - lambda: id(va_phase) = ${phase_error};
+          - script.execute: update_led
+  on_end:
+    - wait_until:
+        not:
+          voice_assistant.is_running:
+    - mixer_speaker.apply_ducking:
+        id: media_mixing_input
+        decibel_reduction: 0
+        duration: 1s
+    - if:
+        condition:
+          lambda: return id(va_phase) == ${phase_error};
+        then:
+          - delay: 1s
+    - lambda: id(va_phase) = ${phase_idle};
+    - script.execute: update_led
+  on_timer_finished:
+    - switch.turn_on: timer_ringing
+
+interval:
+  # micro_wake_word stops for good after an inference error; restart it
+  - interval: 10s
+    then:
+      - if:
+          condition:
+            and:
+              - voice_assistant.connected:
+              - not:
+                  micro_wake_word.is_running:
+          then:
+            - micro_wake_word.start:
+
+# ----------------------------------------------------------------------------
+# LED (one WS2812 on the board)
+# ----------------------------------------------------------------------------
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: led
+    name: LED
+    pin: GPIO1
+    num_leds: 1
+    channel_colors: GRB
+    rmt_symbols: 192
+    # Explicit WS2812 timings with a reset pulse: newer LEDs drop a frame that
+    # follows the previous one within 280 us
+    bit0_high: 300ns
+    bit0_low: 975ns
+    bit1_high: 650ns
+    bit1_low: 650ns
+    reset_low: 300us
+    reset_high: 0us
+    max_refresh_rate: 15ms
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+    effects:
+      - pulse:
+          name: Slow Pulse
+          transition_length: 250ms
+          update_interval: 250ms
+          min_brightness: 20%
+          max_brightness: 100%
+      - pulse:
+          name: Fast Pulse
+          transition_length: 100ms
+          update_interval: 100ms
+          min_brightness: 20%
+          max_brightness: 100%
+
+script:
+  # The only place that sets the LED from the device state
+  - id: update_led
+    mode: restart
+    then:
+      - lambda: |-
+          auto call = id(led).turn_on();
+          call.set_brightness(0.5f);
+          call.set_effect("None");
+          if (id(respeaker).is_failed()) {
+            // XMOS not responding, firmware too old or update failed
+            call.set_rgb(1.0f, 0.0f, 0.0f); call.set_effect("Slow Pulse");
+          } else if (id(mic_muted).state) {
+            call.set_rgb(1.0f, 0.0f, 0.0f); call.set_brightness(0.3f);
+          } else if (id(timer_ringing).state) {
+            call.set_rgb(0.0f, 1.0f, 0.0f); call.set_effect("Fast Pulse");
+          } else {
+            switch (id(va_phase)) {
+              case ${phase_listening}: call.set_rgb(1.0f, 0.2f, 1.0f); call.set_effect("Slow Pulse"); break;
+              case ${phase_thinking}:  call.set_rgb(1.0f, 0.2f, 1.0f); call.set_effect("Fast Pulse"); break;
+              case ${phase_replying}:  call.set_rgb(0.2f, 1.0f, 1.0f); call.set_effect("Slow Pulse"); break;
+              case ${phase_error}:     call.set_rgb(1.0f, 0.0f, 0.0f); call.set_effect("Fast Pulse"); break;
+              case ${phase_not_ready}: call.set_rgb(1.0f, 0.5f, 0.0f); call.set_effect("Slow Pulse"); break;
+              default:
+                id(led).turn_off().perform();
+                return;
+            }
+          }
+          call.perform();
+
+  # Plays a built-in sound as an announcement; `priority` interrupts the current one
+  - id: play_sound
+    mode: queued
+    parameters:
+      priority: bool
+      sound_file: string
+    then:
+      - if:
+          condition:
+            lambda: return priority;
+          then:
+            - media_player.stop:
+                id: external_media_player
+                announcement: true
+      - lambda: |-
+          if (priority || id(external_media_player).state != media_player::MEDIA_PLAYER_STATE_ANNOUNCING) {
+            id(external_media_player)->make_call()
+                .set_media_url("audio-file://" + sound_file)
+                .set_announcement(true)
+                .perform();
+          }
+
+  # A ringing timer stops after 15 minutes. A script, not a delay in
+  # on_turn_on, so turning the ring off also cancels it.
+  - id: ring_timeout
+    mode: restart
+    then:
+      - delay: 15min
+      - switch.turn_off: timer_ringing
+
+  # Enables "stop" while the assistant answers, if the answer takes longer than a second
+  - id: activate_stop_word_once
+    mode: restart
+    then:
+      - wait_until:
+          media_player.is_announcing: external_media_player
+      - delay: 1s
+      - if:
+          condition:
+            switch.is_off: timer_ringing
+          then:
+            - micro_wake_word.enable_model: stop
+            - wait_until:
+                not:
+                  media_player.is_announcing: external_media_player
+            - if:
+                condition:
+                  switch.is_off: timer_ringing
+                then:
+                  - micro_wake_word.disable_model: stop

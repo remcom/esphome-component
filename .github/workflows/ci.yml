@@ -90,7 +90,8 @@ jobs:
           key: platformio-${{ steps.platform.outputs.platform }}-${{ hashFiles('requirements.txt') }}
       - env:
           CONFIG: ${{ matrix.config }}
-        run: esphome compile "$CONFIG"
+        # Configs with an "# esphome>=X" line above the pinned version are skipped
+        run: script/needs-newer-esphome.sh "$CONFIG" || esphome compile "$CONFIG"
 
   compile-min-version:
     name: Compile on oldest supported ESPHome (host)

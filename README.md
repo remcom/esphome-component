@@ -7,6 +7,7 @@ A collection of [ESPHome](https://esphome.io) external components, all served fr
 | `aqara_fp2` | Runs ESPHome on an Aqara FP2 mmWave presence sensor: presence, motion, zones and live target positions | [docs/aqara_fp2.md](docs/aqara_fp2.md) |
 | `grid_meter` | Serves DSMR P1 smart meter data as a Carlo Gavazzi EM24 over Modbus TCP, so a Victron Cerbo GX can use it as a grid meter | [docs/grid_meter.md](docs/grid_meter.md) |
 | `immich` | Shows a slideshow of photos from an Immich album on a display, for example as a screensaver | [docs/immich.md](docs/immich.md) |
+| `respeaker_lite` | XMOS audio processor of the Seeed ReSpeaker Lite: firmware update over I2C, mic mute state, speaker mute; with an [example voice satellite config](examples/respeaker_lite) | [docs/respeaker_lite.md](docs/respeaker_lite.md) |
 | `sunspec` | Runs a SunSpec Modbus TCP server for a solar inverter (Models 1, 101/103, 120, 123) with power-limit write-back | [docs/sunspec.md](docs/sunspec.md) |
 
 These components were previously published as separate repositories:
@@ -28,6 +29,7 @@ external_components:
       - aqara_fp2
       - grid_meter
       - immich
+      - respeaker_lite
       - sunspec
 ```
 
@@ -51,6 +53,7 @@ ref: main
 ```
 components/<name>/         # ESPHome component: __init__.py (schema + codegen), .h/.cpp (runtime)
 docs/<name>.md             # User documentation per component
+examples/<name>/           # Ready-to-use device configurations
 tests/<name>/              # Schema tests (no hardware) and integration tests (live device or host build)
 tests/components/<name>/   # Compile-test configurations per platform
 tests/conftest.py          # Shared pytest options and Modbus TCP fixtures

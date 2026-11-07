@@ -11,6 +11,7 @@ A monorepo of ESPHome external components. Each component lives in `components/<
 | `aqara_fp2` | Aqara FP2 mmWave presence sensor: radar over UART (presence, motion, zones, target positions) plus its I2C accelerometer |
 | `grid_meter` | Emulates a Carlo Gavazzi EM24 Ethernet meter over Modbus TCP so a Victron Cerbo GX can use a DSMR P1 smart meter as a grid meter |
 | `immich` | Slideshow of random photos from an Immich album, loaded into an `online_image` |
+| `respeaker_lite` | XMOS XU316 of the Seeed ReSpeaker Lite over I2C: firmware DFU, mic mute state, speaker mute; example voice satellite in `examples/respeaker_lite/` |
 | `sunspec` | SunSpec Modbus TCP server for a solar inverter, with power-limit write-back over RS485 Modbus |
 
 ## Repository Structure
@@ -20,17 +21,22 @@ components/
   aqara_fp2/         # __init__.py, aqara_fp2.h/.cpp, fp2_accel.h/.cpp, entity platforms
   grid_meter/        # __init__.py, grid_meter.h, grid_meter.cpp
   immich/            # __init__.py, immich.h, immich.cpp
+  respeaker_lite/    # __init__.py, respeaker_lite.h/.cpp, binary_sensor.py, text_sensor.py
   sunspec/           # __init__.py, sunspec.h, sunspec.cpp
 docs/
   aqara_fp2.md
   grid_meter.md
   immich.md
+  respeaker_lite.md
   sunspec.md
+examples/
+  respeaker_lite/    # respeaker-lite-base.yaml (remote package), respeaker-lite.yaml (device config)
 tests/
   conftest.py        # --device-ip / --device-port / --allow-writes, `client`, `raw_request`, `load_component` fixtures
   aqara_fp2/         # test_schema.py, test_aqara_fp2.py (fake radar on a pseudo-terminal)
   grid_meter/        # test_schema.py, test_grid_meter.py
   immich/            # test_schema.py
+  respeaker_lite/    # test_schema.py
   sunspec/           # test_schema.py, test_sunspec.py
   components/        # ESPHome compile-test configs (ESPHome's tests/components layout)
     common/          # per-platform base: esp32-idf, esp32-ard, esp8266-ard, rp2040-ard, host
@@ -62,7 +68,7 @@ Integration tests can also run against host builds (`test.host.yaml` for grid_me
 
 pytest runs with `--import-mode=importlib` (see `pyproject.toml`) because each component has its own `test_schema.py`; schema tests load a component with the `load_component` fixture.
 
-Minimum ESPHome version is 2026.10.0 (`cv.require_esphome_version` in every schema; CI compiles the host configs on it; a config that needs a newer release starts with an `# esphome>=X` line and that job skips it). `requirements.txt` pins the version used for development and CI.
+Minimum ESPHome version is 2026.10.0 (`cv.require_esphome_version` in every schema; CI compiles the host configs on it; a config that needs a newer release starts with an `# esphome>=X` line and that job skips it). Exception: `respeaker_lite` requires 2026.11.0; its compile configs carry `# esphome>=2026.11.0`, which `script/needs-newer-esphome.sh` uses to skip them in the compile matrix and `script/clang-tidy.sh` while the pinned ESPHome is older. `requirements.txt` pins the version used for development and CI.
 
 ## Licensing
 
@@ -104,7 +110,7 @@ Follow https://github.com/esphome/esphome/blob/dev/AGENTS.md. Key rules for all 
 
 ### Platform support
 
-`grid_meter` and `sunspec` use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests them on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host. `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host (radar only: host I2C is Linux-only, and the host UART cannot run 890000 baud, so the baud-rate check is skipped on host). `immich` is compile-tested on ESP32 (ESP-IDF and Arduino) only: `image:` requires a display, so it has no host config and `script/clang-tidy.sh` does not cover it.
+`grid_meter` and `sunspec` use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests them on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host. `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host (radar only: host I2C is Linux-only, and the host UART cannot run 890000 baud, so the baud-rate check is skipped on host). `respeaker_lite` is compile-tested on ESP32 (ESP-IDF and Arduino) and host (`test.host.yaml` is `# linux-only`, host I2C). `immich` is compile-tested on ESP32 (ESP-IDF and Arduino) only: `image:` requires a display, so it has no host config and `script/clang-tidy.sh` does not cover it.
 
 ---
 
@@ -222,3 +228,26 @@ Slideshow of photos from an Immich album. Ported from the `immich` branch of the
 - `show_next_()`: skipped while the `online_image` is still decoding. Sends a blocking `POST /api/search/random` (body built in Python by `search_body()`: album id, `size: 1`, `type: IMAGE`, no EXIF/people), reads the response with `http_read_loop_result()`, parses only `[0].id` (ArduinoJson filter), checks it is a 36-char UUID, then sets the image URL to `<base>/api/assets/<id>/thumbnail?size=preview` (string reserved in `setup()`, prefix kept) and calls `update()` on the image.
 - Errors (request failed, HTTP status, truncated/oversized response, JSON error, no asset) set a warning; a successful pick clears it.
 - Actions `immich.start` / `immich.stop` / `immich.next_image` and condition `immich.is_running`; `next_image` does not change the running state. `MULTI_CONF`.
+
+---
+
+## Component: `respeaker_lite`
+
+XMOS XU316 audio processor of the Seeed ReSpeaker Lite (XIAO ESP32-S3), over I2C at 0x42. Ported from `formatBCE/Respeaker-Lite-ESPHome-integration` (`esphome/components/respeaker_lite`; that repo has no license file). Its `decimator` microphone is deliberately not ported: the example uses the stock `resampler` microphone (user's choice).
+
+### How it works
+
+- Control protocol: `resid, cmd (| 0x80 for reads), payload length, payload`; read answers start with a status byte (0 = done). DFU resid 240, configuration resid 241 (speaker mute cmd 0x10, mic mute cmd 0x01).
+- `setup()` pulses `reset_pin`, then after `BOOT_DELAY_MS` reads the version (`check_version_after_boot_()`). With a bundled firmware and another version, and the found version ≥ `auto_update_min_version` (default 1.0.8, issue #94 upstream: older DFU erases the factory image), it runs DFU; below that it marks failed.
+- `can_proceed()` holds later components until `ready_` (version read and, with firmware, matching). Setup priority `HARDWARE - 1.5` (below lights, so DFU automations can drive the LED).
+- DFU is a `DfuPhase` state machine in `loop()`: DOWNLOAD (128-byte blocks, as many per loop as are ready within `DFU_LOOP_BUDGET_MS` (20 ms), paced by the GETSTATUS poll delay; ready = DFU_IDLE/DNLOAD_IDLE/MANIFEST_WAIT_RESET) → FINISH (empty block) → REBOOT → VERIFY (version every 500 ms). No ready state for `DFU_TIMEOUT_MS` (4 s) → timeout. Failures call `on_error` and `mark_failed` (XMOS has no usable firmware; justified exception to the setup-only rule). Time differences go through `elapsed_ms()` because `start_dfu_update()` uses `millis()` and `loop()` the loop start time.
+- Mic mute is polled every `MIC_MUTE_POLL_MS` (50 ms) only when the `mic_mute` binary sensor is configured; read errors set a warning. Without it, `set_ready_()` disables `loop()`; `start_dfu_update()` enables it again.
+- `start_dfu_update()` refuses before the boot check (`boot_checked_`), while a DFU runs, and when failed (`mark_failed` disables `loop()`, so the DFU would never advance).
+- Actions are `register_apply_action` + `ApplyCall` (no C++ action classes; 2026.11 can inline them); DFU automations use `build_callback_automations` with `DFU_AUTOMATIONS`. Requires ESPHome 2026.11 (`i2c.new_i2c_component()`, `status_comm_result()`).
+- Firmware `url` (downloaded at validation into the external files dir) or `path`, checked against `md5`, embedded with `cg.progmem_array`. `on_begin/on_progress(x: float)/on_end/on_error(x: uint8)` (arg name `x` kept for upstream YAML compatibility).
+- Entities via platforms (`binary_sensor: mic_mute`, `text_sensor: firmware_version`), guarded by `USE_BINARY_SENSOR` / `USE_TEXT_SENSOR`; no `AUTO_LOAD`.
+
+### Example configs
+
+`examples/respeaker_lite/respeaker-lite-base.yaml` is a remote package (loads the component from `github://remcom/esphome-component@${esphome_component_ref}`) and `respeaker-lite.yaml` the thin device config. The XMOS firmware URL points at the upstream repo's tag 2026.10.4 (md5 verified). The example carries the owner's device changes from `../esphomedevices` (`common/respeaker-satellite-base.yaml`, `media-player-sendspin.yaml`): full-duplex I2S bus, `prefer_internal_ram`, Sendspin with pairing code, `announcement_volume` + Announce volume number, unducking in `on_state` (not `on_idle`: music keeps playing), volume 0.4–0.85, resampler task stacks in internal RAM, Voice PE FLAC sounds, timers with the stop word. Fleet-only settings (NVS encryption, network policy, logger levels, `flash_chip`, boot volume) stay in that repo. The examples are not in the CI compile matrix (the base package fetches the component from GitHub); to check a change, copy both into a scratch dir, point `external_components` at the local `components/` and `packages` at the local base, then `esphome config` / `esphome compile`.
+

@@ -1,0 +1,31 @@
+# =============================================================================
+# ReSpeaker Lite voice satellite: device config
+#
+# Copy this file into your ESPHome config directory, put wifi_ssid,
+# wifi_password and api_encryption_key in secrets.yaml, and install
+# (ESPHome 2026.11 or newer). Everything else comes from
+# respeaker-lite-base.yaml in remcom/esphome-component.
+# =============================================================================
+
+substitutions:
+  name: respeaker-lite
+  friendly_name: ReSpeaker Lite
+
+packages:
+  respeaker_lite: github://remcom/esphome-component/examples/respeaker_lite/respeaker-lite-base.yaml@main
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+
+captive_portal:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  # Uses the api encryption key
+  - platform: esphome
+    encryption: {}

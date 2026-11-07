@@ -1,0 +1,27 @@
+i2c:
+  id: i2c_bus
+  sda: 21
+  scl: 22
+
+respeaker_lite:
+  id: respeaker
+  reset_pin: 4
+
+binary_sensor:
+  - platform: respeaker_lite
+    mic_mute:
+      name: Mic mute
+
+text_sensor:
+  - platform: respeaker_lite
+    firmware_version:
+      name: XMOS firmware version
+
+esphome:
+  on_shutdown:
+    then:
+      - respeaker_lite.mute_speaker: respeaker
+  on_boot:
+    then:
+      - respeaker_lite.unmute_speaker: respeaker
+      - respeaker_lite.flash: respeaker

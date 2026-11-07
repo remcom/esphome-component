@@ -1,0 +1,22 @@
+# linux-only: host I2C is only supported on Linux (script/clang-tidy.sh skips this file elsewhere).
+# esphome>=2026.11.0
+substitutions:
+  device_name: respeaker-lite-host
+
+packages:
+  base: !include ../common/host.yaml
+  firmware: !include firmware.yaml
+
+i2c:
+  id: i2c_bus
+  device: /dev/i2c-0
+
+binary_sensor:
+  - platform: respeaker_lite
+    mic_mute:
+      name: Mic mute
+
+text_sensor:
+  - platform: respeaker_lite
+    firmware_version:
+      name: XMOS firmware version

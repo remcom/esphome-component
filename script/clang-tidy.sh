@@ -19,6 +19,9 @@ for config in tests/components/*/test*.host.yaml; do
     echo "=== $config (skipped: linux-only)"
     continue
   fi
+  if script/needs-newer-esphome.sh "$config"; then
+    continue
+  fi
   component=$(basename "$(dirname "$config")")
   device=$(esphome config "$config" 2>/dev/null | awk '/^esphome:/{f=1} f && /^  name:/{print $2; exit}')
   build="$(dirname "$config")/.esphome/build/$device"
