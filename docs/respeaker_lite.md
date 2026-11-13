@@ -21,11 +21,13 @@ Ported from [formatBCE/Respeaker-Lite-ESPHome-integration](https://github.com/fo
   ringing timer or a long answer
 - voice assistant with timers (the timer rings until stopped, at most 15 minutes)
 - media player for Home Assistant and [Sendspin](https://www.sendspin-audio.com) (Music Assistant
-  multi-room, with pairing code), announcements ducking the music, and an *Announce volume* number for
-  announcements on an idle player
-- wake, mute and timer sounds of the Home Assistant Voice PE, each sound switchable
-- LED status, user button (stops a timer, the assistant, an announcement or music; otherwise talks) and a
-  mic mute switch
+  multi-room, with pairing code; 24-bit FLAC/PCM, set `media_bits_per_sample: "16"` to save RAM),
+  announcements ducking the music, and an *Announce volume* number for announcements on an idle player
+- wake, mute and timer sounds of the Home Assistant Voice PE, each sound switchable, and a spoken error
+  when the Home Assistant Cloud subscription has expired
+- LED status (waiting for speech, listening, thinking, replying, error), user button (stops a timer, the
+  assistant, an announcement or music, pausing the whole Sendspin group when grouped; otherwise talks)
+  and a mic mute switch
 
 1. Copy [`respeaker-lite.yaml`](../examples/respeaker_lite/respeaker-lite.yaml) into your ESPHome
    config directory (rename it to your device name if you like).
@@ -47,7 +49,14 @@ Override any substitution of [`respeaker-lite-base.yaml`](../examples/respeaker_
 
 The XMOS drives the I2S clocks at 48 kHz for microphones and speaker together, so the example uses one
 full-duplex `i2s_audio` bus and ESPHome's `resampler` microphone (48 kHz → 16 kHz) for wake word and
-speech. `micro_wake_word` keeps its models in internal RAM (`prefer_internal_ram`) for faster inference.
+speech: channel 1 (processed for wake words) feeds `micro_wake_word`, channel 0 (processed for speech
+recognition) the voice assistant. `respeaker-lite.yaml` shows how to send both channels to Home Assistant.
+Do not set `prefer_internal_ram` on `micro_wake_word`: it leaves too little internal heap for the I2S
+speaker, which then crackles, and the wake word stops responding.
+
+Sendspin streams arrive at 24 bits (`media_bits_per_sample`); the media resampler passes the bit depth
+through and the mixer converts to the 32-bit I2S output. Announcements stay 16-bit. Opus is not offered to
+Sendspin, as it decodes to 16 bits only.
 
 ## Installation
 

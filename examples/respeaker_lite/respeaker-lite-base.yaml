@@ -35,18 +35,24 @@ substitutions:
   # Volume (%) of an announcement that starts while nothing plays, until the
   # Announce volume number is changed
   announcement_volume_initial: "50"
+  # Bit depth Sendspin (Music Assistant) streams FLAC and PCM in: 24 or 16.
+  # 24 keeps hi-res sources intact up to the 32-bit I2S output, at the cost of
+  # 1.5x larger media buffers. Set "16" if Free Memory Low Water gets tight.
+  media_bits_per_sample: "24"
 
-  # Sounds of the Home Assistant Voice PE (FLAC: the pipelines already decode FLAC)
+  # Sounds of the Home Assistant Voice PE (FLAC where available: the pipelines already decode FLAC)
   wake_word_triggered_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac
   mute_switch_on_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_on.flac
   mute_switch_off_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/mute_switch_off.flac
   timer_finished_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/timer_finished.flac
+  error_cloud_expired_sound_file: https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/error_cloud_expired.mp3
 
   # Voice assistant phases, shown by the LED (script update_led)
   phase_idle: "1"
-  phase_listening: "2"
-  phase_thinking: "3"
-  phase_replying: "4"
+  phase_waiting: "2"
+  phase_listening: "3"
+  phase_thinking: "4"
+  phase_replying: "5"
   phase_not_ready: "10"
   phase_error: "11"
 
@@ -54,10 +60,11 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   min_version: 2026.11.0
+  # A list, so a device config can add its own on_boot entries
   on_boot:
-    priority: 375
-    then:
-      - script.execute: update_led
+    - priority: 375
+      then:
+        - script.execute: update_led
   on_shutdown:
     then:
       # Prevents a loud pop on a software restart
@@ -177,15 +184,22 @@ binary_sensor:
                           else:
                             - if:
                                 condition:
-                                  media_player.is_playing: external_media_player
+                                  # A Sendspin group: pause every speaker in it, as Music Assistant would
+                                  media_player.is_playing: sendspin_group_media_player
                                 then:
-                                  - media_player.pause: external_media_player
+                                  - media_player.pause: sendspin_group_media_player
                                 else:
                                   - if:
                                       condition:
-                                        switch.is_off: mic_mute
+                                        media_player.is_playing: external_media_player
                                       then:
-                                        - voice_assistant.start:
+                                        - media_player.pause: external_media_player
+                                      else:
+                                        - if:
+                                            condition:
+                                              switch.is_off: mic_mute
+                                            then:
+                                              - voice_assistant.start:
 
 text_sensor:
   - platform: respeaker_lite
@@ -367,18 +381,21 @@ speaker:
       - id: media_mixing_input
         timeout: never
 
+  # Announcements (TTS, sounds) are 16-bit
   - platform: resampler
     id: announcement_resampling_speaker
     output_speaker: announcement_mixing_input
     task_stack_in_psram: false
     sample_rate: 48000
     bits_per_sample: 16
+  # No bits_per_sample: passes the stream's bit depth (up to
+  # media_bits_per_sample from Sendspin) through to the mixer, which converts
+  # to the 32-bit I2S output
   - platform: resampler
     id: media_resampling_speaker
     output_speaker: media_mixing_input
     task_stack_in_psram: false
     sample_rate: 48000
-    bits_per_sample: 16
 
 audio_file:
   - id: wake_word_triggered_sound
@@ -389,6 +406,8 @@ audio_file:
     file: ${mute_switch_off_sound_file}
   - id: timer_finished_sound
     file: ${timer_finished_sound_file}
+  - id: error_cloud_expired_sound
+    file: ${error_cloud_expired_sound_file}
 
 # Sendspin: Music Assistant multi-room playback
 sendspin:
@@ -408,9 +427,12 @@ media_source:
     id: sendspin_media_source
     sendspin_id: sendspin_hub
     sample_rate: 48000
+    bits_per_sample: ${media_bits_per_sample}
     # The AIC3204 DAC, as configured, delays audio by 480 us; keeps multi-room in sync
     fixed_delay: 480us
-    codecs: [flac, opus, pcm]
+    # Order is preference. No Opus: it always decodes to 16 bits, and FLAC is
+    # the cheapest codec to decode
+    codecs: [flac, pcm]
 
 media_player:
   # Needed by the Sendspin protocol for grouping; not useful in Home Assistant
@@ -499,8 +521,9 @@ button:
 
 micro_wake_word:
   id: mww
-  # Model arenas in internal RAM: faster inference than PSRAM
-  prefer_internal_ram: true
+  # Do NOT set `prefer_internal_ram: true`: on 2026.11 it left only 6-12 kB of
+  # internal heap, after which the speaker crackled at idle and the wake word
+  # stopped responding.
   microphone:
     microphone: mics_16k
     channels: 1
@@ -580,6 +603,8 @@ select:
 
 voice_assistant:
   id: va
+  # The ASR channel. The device config can add the wake word channel as a
+  # second microphone, see respeaker-lite.yaml.
   microphone:
     microphone: mics_16k
     channels: 0
@@ -603,7 +628,11 @@ voice_assistant:
         id: media_mixing_input
         decibel_reduction: 20
         duration: 0s
+  # Waiting until speech starts, then listening until it ends
   on_listening:
+    - lambda: id(va_phase) = ${phase_waiting};
+    - script.execute: update_led
+  on_stt_vad_start:
     - lambda: id(va_phase) = ${phase_listening};
     - script.execute: update_led
   on_stt_vad_end:
@@ -633,6 +662,12 @@ voice_assistant:
         then:
           - lambda: id(va_phase) = ${phase_error};
           - script.execute: update_led
+    # Home Assistant Cloud subscription expired: say so instead of failing silently
+    - if:
+        condition:
+          lambda: return code == "cloud-auth-failed";
+        then:
+          - script.execute: {id: play_sound, priority: true, sound_file: error_cloud_expired_sound}
   on_end:
     - wait_until:
         not:
@@ -719,7 +754,8 @@ script:
             call.set_rgb(0.0f, 1.0f, 0.0f); call.set_effect("Fast Pulse");
           } else {
             switch (id(va_phase)) {
-              case ${phase_listening}: call.set_rgb(1.0f, 0.2f, 1.0f); call.set_effect("Slow Pulse"); break;
+              case ${phase_waiting}:   call.set_rgb(1.0f, 0.2f, 1.0f); call.set_effect("Slow Pulse"); break;
+              case ${phase_listening}: call.set_rgb(1.0f, 0.2f, 1.0f); call.set_brightness(0.8f); break;
               case ${phase_thinking}:  call.set_rgb(1.0f, 0.2f, 1.0f); call.set_effect("Fast Pulse"); break;
               case ${phase_replying}:  call.set_rgb(0.2f, 1.0f, 1.0f); call.set_effect("Slow Pulse"); break;
               case ${phase_error}:     call.set_rgb(1.0f, 0.0f, 0.0f); call.set_effect("Fast Pulse"); break;

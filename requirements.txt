@@ -1,5 +1,6 @@
 # Pinned so CI is reproducible; the components themselves support ESPHome >= 2026.10.0
-esphome==2026.10.1
+# (respeaker_lite >= 2026.11.0). Beta until 2026.11.0 is released: bump then.
+esphome==2026.11.0b4
 # 3.10 renamed slave= to device_id=, which the integration tests use
 pymodbus>=3.10,<4.0
 pytest>=7.0

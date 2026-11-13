@@ -29,3 +29,14 @@ ota:
   # Uses the api encryption key
   - platform: esphome
     encryption: {}
+
+# Optional: also send the wake word channel (XMOS channel 1) to Home Assistant
+# as a second microphone, like the Voice PE does with its un-AGC'd channel.
+# Here channel 1 is processed for wake words rather than raw, so check that
+# speech recognition improves before keeping it.
+# voice_assistant:
+#   microphone:
+#     - microphone: mics_16k
+#       channels: 0
+#     - microphone: mics_16k
+#       channels: 1
