@@ -48,6 +48,16 @@ controller board, next to the one the display uses (ports 122/123):
 Measure before connecting: pin 7 should be about +12 V against pin 5. Power the ESP separately
 (USB). Compile-tested on ESP32 (ESP-IDF and Arduino) and host.
 
+> **Check the cable, not only the colours.** A mirrored (rollover) cable, which is common with
+> flat RJ45 cables, maps pin N to pin 9−N. The wires that would be A and B (pins 1 and 3) then
+> land on +12 V and GND (pins 8 and 6). The symptom is a steady 9–12 V between "A" and "B" and a
+> transceiver RX LED that stays lit while no frame is decoded. On a working bus the voltage
+> between A and B stays small (under about 5 V) and keeps changing, and the RX LED flickers about
+> every 4 seconds. With a mirrored cable the bus is on the brown (A, pin 1) and blue-white
+> (B, pin 4) wires, and orange-white carries +12 V (T568B colours; in a T568A cable it is
+green-white). If the LED flickers but no entity updates
+> within a minute, swap A and B.
+
 ## Configuration
 
 The bus runs Modbus RTU at 9600 baud, 8E1. Listening needs only an RX pin; the room sensor
