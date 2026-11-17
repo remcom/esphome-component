@@ -1,0 +1,16 @@
+# Room temperature input for the emulated room sensor: a number the test sets over the API.
+number:
+  - platform: template
+    id: room_temperature_value
+    name: Room temperature input
+    optimistic: true
+    min_value: -20
+    max_value: 60
+    step: 0.1
+    initial_value: 21.5
+
+sensor:
+  - platform: template
+    id: room_temperature_input
+    lambda: return id(room_temperature_value).state;
+    update_interval: 1s

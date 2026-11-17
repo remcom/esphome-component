@@ -8,6 +8,7 @@ A collection of [ESPHome](https://esphome.io) external components, all served fr
 | `grid_meter` | Serves DSMR P1 smart meter data as a Carlo Gavazzi EM24 over Modbus TCP, so a Victron Cerbo GX can use it as a grid meter | [docs/grid_meter.md](docs/grid_meter.md) |
 | `immich` | Shows a slideshow of photos from an Immich album on a display, for example as a screensaver | [docs/immich.md](docs/immich.md) |
 | `respeaker_lite` | XMOS audio processor of the Seeed ReSpeaker Lite: firmware update over I2C, mic mute state, speaker mute; with an [example voice satellite config](examples/respeaker_lite) | [docs/respeaker_lite.md](docs/respeaker_lite.md) |
+| `thermia_itec_eco` | Reads a Thermia iTec Eco heat pump from its internal RS485 bus, and can act as its room sensor (room temperature, setpoint, hot water top-up) | [docs/thermia_itec_eco.md](docs/thermia_itec_eco.md) |
 | `sunspec` | Runs a SunSpec Modbus TCP server for a solar inverter (Models 1, 101/103, 120, 123) with power-limit write-back | [docs/sunspec.md](docs/sunspec.md) |
 
 These components were previously published as separate repositories:
@@ -31,6 +32,7 @@ external_components:
       - immich
       - respeaker_lite
       - sunspec
+      - thermia_itec_eco
 ```
 
 Then configure each component as described in its documentation.

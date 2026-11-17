@@ -128,6 +128,7 @@ jobs:
           esphome compile tests/components/sunspec/test-number.host.yaml
           esphome compile tests/components/aqara_fp2/test.host.yaml
           esphome compile tests/components/aqara_fp2/test-location-off.host.yaml
+          esphome compile tests/components/thermia_itec_eco/test.host.yaml
       - name: Start host binaries
         run: |
           tests/components/grid_meter/.esphome/build/grid-meter-host/.pioenvs/grid-meter-host/program > grid_meter.log 2>&1 &
@@ -141,6 +142,8 @@ jobs:
       - run: pytest tests/sunspec/test_sunspec.py --device-ip=127.0.0.1 --device-port=5021 --allow-writes -v
       # Starts the binaries itself, with a fake radar on a pseudo-terminal
       - run: pytest tests/aqara_fp2/test_aqara_fp2.py --aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build -v
+      # Starts the binary itself, with a fake heat pump bus on a pseudo-terminal
+      - run: pytest tests/thermia_itec_eco/test_thermia_itec_eco.py --thermia-itec-eco-build-dir=tests/components/thermia_itec_eco/.esphome/build -v
       - name: Device logs
         if: always()
         run: cat grid_meter.log sunspec.log

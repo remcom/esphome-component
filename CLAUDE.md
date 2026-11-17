@@ -13,6 +13,7 @@ A monorepo of ESPHome external components. Each component lives in `components/<
 | `immich` | Slideshow of random photos from an Immich album, loaded into an `online_image` |
 | `respeaker_lite` | XMOS XU316 of the Seeed ReSpeaker Lite over I2C: firmware DFU, mic mute state, speaker mute; example voice satellite in `examples/respeaker_lite/` |
 | `sunspec` | SunSpec Modbus TCP server for a solar inverter, with power-limit write-back over RS485 Modbus |
+| `thermia_itec_eco` | Thermia iTec Eco heat pump: passive decoder of its internal RS485 bus, optional Modbus room sensor emulation (room temperature, setpoint request, hot water top-up) |
 
 ## Repository Structure
 
@@ -23,6 +24,7 @@ components/
   immich/            # __init__.py, immich.h, immich.cpp
   respeaker_lite/    # __init__.py, respeaker_lite.h/.cpp, binary_sensor.py, text_sensor.py
   sunspec/           # __init__.py, sunspec.h, sunspec.cpp
+  thermia_itec_eco/  # __init__.py, thermia_itec_eco.h/.cpp, entity platforms
 firmware/
   respeaker_lite/    # Seeed's XMOS firmware .bin + README (source, md5)
 docs/
@@ -31,6 +33,7 @@ docs/
   immich.md
   respeaker_lite.md
   sunspec.md
+  thermia_itec_eco.md
 examples/
   respeaker_lite/    # respeaker-lite-base.yaml (remote package), respeaker-lite.yaml (device config)
 tests/
@@ -40,6 +43,7 @@ tests/
   immich/            # test_schema.py
   respeaker_lite/    # test_schema.py
   sunspec/           # test_schema.py, test_sunspec.py
+  thermia_itec_eco/  # test_schema.py, test_thermia_itec_eco.py (fake bus on a pseudo-terminal + native API), itec_eco5_capture.log
   components/        # ESPHome compile-test configs (ESPHome's tests/components layout)
     common/          # per-platform base: esp32-idf, esp32-ard, esp8266-ard, rp2040-ard, host
     <name>/          # common.yaml + test[-variant].<platform>.yaml
@@ -66,7 +70,7 @@ esphome compile tests/components/<name>/test.esp32-idf.yaml     # compile test
 pytest tests/<component>/ --device-ip=<DEVICE_IP> -v            # integration tests against a flashed device
 ```
 
-Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. The aqara_fp2 integration test starts its host builds itself (`--aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build`; it needs `test.host.yaml` and `test-location-off.host.yaml` built) and plays the radar on a pseudo-terminal linked at `/tmp/aqara-fp2-radar`. sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
+Integration tests can also run against host builds (`test.host.yaml` for grid_meter on port 5020, `test-number.host.yaml` for sunspec on port 5021) — see the docs of each component. The aqara_fp2 integration test starts its host builds itself (`--aqara-fp2-build-dir=tests/components/aqara_fp2/.esphome/build`; it needs `test.host.yaml` and `test-location-off.host.yaml` built) and plays the radar on a pseudo-terminal linked at `/tmp/aqara-fp2-radar`. The thermia_itec_eco integration test likewise starts its host build (`--thermia-itec-eco-build-dir=tests/components/thermia_itec_eco/.esphome/build`), plays the bus on a pseudo-terminal linked at `/tmp/thermia-itec-eco-bus` and drives the controls over the native API (port 6063, `aioesphomeapi`). sunspec tests that write power limits are skipped unless `--allow-writes` is passed (on real hardware they limit the inverter).
 
 pytest runs with `--import-mode=importlib` (see `pyproject.toml`) because each component has its own `test_schema.py`; schema tests load a component with the `load_component` fixture.
 
@@ -112,7 +116,7 @@ Follow https://github.com/esphome/esphome/blob/dev/AGENTS.md. Key rules for all 
 
 ### Platform support
 
-`grid_meter` and `sunspec` use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests them on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host. `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host (radar only: host I2C is Linux-only, and the host UART cannot run 890000 baud, so the baud-rate check is skipped on host). `respeaker_lite` is compile-tested on ESP32 (ESP-IDF and Arduino) and host (`test.host.yaml` is `# linux-only`, host I2C). `immich` is compile-tested on ESP32 (ESP-IDF and Arduino) only: `image:` requires a display, so it has no host config and `script/clang-tidy.sh` does not cover it.
+`grid_meter` and `sunspec` use ESPHome's `socket` component, so they are not tied to ESP32. CI compile-tests them on ESP32 (ESP-IDF and Arduino), ESP8266, RP2040 (Pico W) and host. `aqara_fp2` targets the FP2's ESP32 and is compile-tested on ESP32 (ESP-IDF and Arduino) and host (radar only: host I2C is Linux-only, and the host UART cannot run 890000 baud, so the baud-rate check is skipped on host). `respeaker_lite` is compile-tested on ESP32 (ESP-IDF and Arduino) and host (`test.host.yaml` is `# linux-only`, host I2C). `thermia_itec_eco` is compile-tested on ESP32 (ESP-IDF and Arduino) and host; the transceiver direction pin is the UART's `flow_control_pin` (ESP32 only). `immich` is compile-tested on ESP32 (ESP-IDF and Arduino) only: `image:` requires a display, so it has no host config and `script/clang-tidy.sh` does not cover it.
 
 ---
 
@@ -253,3 +257,23 @@ XMOS XU316 audio processor of the Seeed ReSpeaker Lite (XIAO ESP32-S3), over I2C
 
 `examples/respeaker_lite/respeaker-lite-base.yaml` is a remote package (loads the component from `github://remcom/esphome-component@${esphome_component_ref}`) and `respeaker-lite.yaml` the thin device config. The XMOS firmware URL points at this repo's copy, `firmware/respeaker_lite/respeaker_lite_i2s_dfu_firmware_48k_v1.1.0.bin`, at `${esphome_component_ref}` (byte-identical to Seeed's `..._48k_v1.1.0_ch0-asr_ch1-mww.bin`, md5 9297155d1bf3eb21a9d4db52a89ea0c6). A new firmware version gets a new file name; never replace the file in place, or pinned configs fail their md5 check. The example carries the owner's device changes from `../esphomedevices` (`common/respeaker-satellite-base.yaml`, `media-player-sendspin.yaml`): full-duplex I2S bus, no `prefer_internal_ram` on `micro_wake_word` (starved the internal heap on 2026.11: speaker crackles, no wake word), Sendspin with pairing code and 24-bit streams (`media_bits_per_sample`, media resampler passes the bit depth through, codecs `[flac, pcm]`), `announcement_volume` + Announce volume number, unducking in `on_state` (not `on_idle`: music keeps playing), volume 0.4–0.85, resampler task stacks in internal RAM, Voice PE FLAC sounds plus the cloud-expired error sound, timers with the stop word, separate waiting/listening LED phases (`on_listening` / `on_stt_vad_start`), user button pausing the Sendspin group when grouped. The optional second voice-assistant microphone (XMOS channel 1) is a commented override in `respeaker-lite.yaml`. Fleet-only settings (NVS encryption, network policy, logger levels, `flash_chip`, boot volume) stay in that repo. The examples are not in the CI compile matrix (the base package fetches the component from GitHub); to check a change, copy both into a scratch dir, point `external_components` at the local `components/` and `packages` at the local base, then `esphome config` / `esphome compile`.
 
+
+---
+
+## Component: `thermia_itec_eco`
+
+Thermia iTec Eco heat pump (Danfoss DHP-AQ controller) on its internal RS485 bus (RJ45 port 122/123: 1+2 A, 3+4 B, 5+6 GND, 7+8 +12 V). Register map from community reverse engineering: `ryckema/Thermia_itec` (XTR M + iTec Eco profile, MIT) and `piotr-romanowski/thermia-bus-sniffer` (Eco 8, MIT); see `docs/thermia_itec_eco.md` for sources and which values are unconfirmed.
+
+### How it works
+
+- Modbus RTU, 9600 8E1. The display panel is the only master; it polls slaves 0x02 (I/O board, FC23 read 15 @0xA7F8 / write 7 @0xA80C), 0x0A (room sensor slot, FC23 read 3 @0xB3B0 / write 3 @0xB3C4), 0x1E (outdoor unit, FC04 @0, FC16 @0) and writes settings pages to 0x0F (FC16 @1000…). 0x06 (online module slot) is ignored.
+- Framing by CRC, not timing: `match_frame()` tries the request and reply lengths the function code allows (shortest first); unmatched bytes are skipped one at a time; a partial frame that stops growing for `RX_STALE_MS` loses its first byte. Replies carry no address, so a reply is decoded against the display's last request (`request_`, matched by slave, function and length).
+- Register values go through `RegisterBlock::get()`; `handle_read_()` (slave replies) and `handle_write_()` (display requests) map them onto the `SensorType` / `BinarySensorType` tables. Sensors are deduplicated (`Deduplicator<float>`); 0x02 temperatures are whole °C with -1000 = absent probe (NaN), 0x1E unsigned values 0xFFFF = not available (NaN).
+- `bus_timeout` (default 30 s, checked by a 1 s interval): warning, sensors NaN, binary sensors invalidated; cleared by the next valid frame.
+- The settings page (0x0F @1000) is only sent when a setting changes on the display (or during an online-module session), so those sensors are often unknown.
+
+### Room sensor emulation (`room_sensor:`)
+
+- Compiled only when configured (`USE_THERMIA_ITEC_ECO_ROOM_SENSOR`); only then is TX required. Reply `0A 17 06 <temp ×10> <setpoint request> <top-up request> CRC` to the 0x0A poll, sent from `loop()` after the poll was parsed and only if nothing else arrived since (display waits ~145 ms), with the 3.5-character frame gap (`FRAME_GAP_US`) since the last received byte.
+- No reply when the `room_sensor` switch is off (default `RESTORE_DEFAULT_OFF`; without the switch the emulation is always on), when the input sensor is NaN, outside 0–40 °C or older than `room_sensor.timeout` (default 1 h), or after another room sensor answered (`peer_detected_`, warning, until reboot). Our own reply echoed by the transceiver is recognised (`last_reply_`) and not taken for another sensor.
+- Setpoint request (@46001, whole °C, 10–30): repeated until the display pushes the same value in 0xB3C5, at most `MAX_SETPOINT_REPLIES` (5) replies. The number entity shows 0xB3C5 except while a request is pending. Top-up (@46002 = 1) is one-shot; 0xB3C6 = 2 while it runs.

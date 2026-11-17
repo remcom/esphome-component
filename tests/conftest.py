@@ -29,6 +29,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="ESPHome build directory holding the aqara_fp2 host builds "
         "(tests/components/aqara_fp2/.esphome/build) for the aqara_fp2 integration tests",
     )
+    parser.addoption(
+        "--thermia-itec-eco-build-dir",
+        default=None,
+        help="ESPHome build directory holding the thermia_itec_eco host build "
+        "(tests/components/thermia_itec_eco/.esphome/build) for the thermia_itec_eco "
+        "integration tests",
+    )
 
 
 @pytest.fixture(scope="module")

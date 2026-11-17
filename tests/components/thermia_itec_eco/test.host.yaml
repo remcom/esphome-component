@@ -1,0 +1,32 @@
+# Also the target of tests/thermia_itec_eco/test_thermia_itec_eco.py, which plays the display and
+# the heat pump boards on a pseudo-terminal linked at /tmp/thermia-itec-eco-bus and drives the
+# controls over the native API on port 6063.
+substitutions:
+  device_name: thermia-itec-eco-host
+
+packages:
+  base: !include ../common/host.yaml
+  thermia_itec_eco: !include common.yaml
+  room_input: !include room_input.yaml
+
+# Entity states are logged at VERBOSE; the integration test reads them from the log.
+logger:
+  level: VERBOSE
+
+api:
+  port: 6063
+
+uart:
+  id: uart_bus
+  port: /tmp/thermia-itec-eco-bus
+  baud_rate: 9600
+  parity: EVEN
+
+thermia_itec_eco:
+  bus_timeout: 3s
+
+# Host preferences persist between runs: start every test with the emulation off.
+switch:
+  - id: !extend heat_pump_switches
+    room_sensor:
+      restore_mode: ALWAYS_OFF

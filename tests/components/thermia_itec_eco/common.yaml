@@ -1,0 +1,103 @@
+# Every entity; the uart bus `uart_bus` and the room temperature input `room_temperature_input`
+# come from the platform file.
+thermia_itec_eco:
+  id: heat_pump
+  uart_id: uart_bus
+  room_sensor:
+    temperature: room_temperature_input
+    timeout: 30min
+
+sensor:
+  - platform: thermia_itec_eco
+    supply_temperature:
+      name: Supply temperature
+    outdoor_temperature:
+      name: Outdoor temperature
+    hot_water_top_temperature:
+      name: Hot water top temperature
+    hot_water_temperature:
+      name: Hot water temperature
+    room_temperature:
+      name: Room temperature
+    room_setpoint:
+      name: Room setpoint
+    target_supply_temperature:
+      name: Target supply temperature
+    condenser_inlet_temperature:
+      name: Condenser inlet temperature
+    condenser_outlet_temperature:
+      name: Condenser outlet temperature
+    high_pressure:
+      name: High pressure
+    compressor_frequency:
+      name: Compressor frequency
+    compressor_current:
+      name: Compressor current
+    outdoor_fan_speed:
+      name: Outdoor fan speed
+    expansion_valve_position:
+      name: Expansion valve position
+    circulation_pump_speed:
+      name: Circulation pump speed
+    heating_curve:
+      name: Heating curve
+    heating_curve_min:
+      name: Heating curve min
+    heating_curve_max:
+      name: Heating curve max
+    curve_correction_plus_5:
+      name: Curve correction +5
+    curve_correction_0:
+      name: Curve correction 0
+    curve_correction_minus_5:
+      name: Curve correction -5
+    heating_stop_temperature:
+      name: Heating stop temperature
+    setback_temperature:
+      name: Setback temperature
+    room_factor:
+      name: Room factor
+
+binary_sensor:
+  - platform: thermia_itec_eco
+    compressor:
+      name: Compressor
+    defrost:
+      name: Defrost
+    outdoor_fan:
+      name: Outdoor fan
+    circulation_pump:
+      name: Circulation pump
+    hot_water_valve:
+      name: Hot water valve
+    immersion_heater_1:
+      name: Immersion heater 1
+    immersion_heater_2:
+      name: Immersion heater 2
+    external_aux_heater:
+      name: External aux heater
+    hot_water_top_up:
+      name: Hot water top-up
+    high_power:
+      name: High power
+
+text_sensor:
+  - platform: thermia_itec_eco
+    operating_mode:
+      name: Operating mode
+
+number:
+  - platform: thermia_itec_eco
+    room_setpoint:
+      name: Room setpoint request
+
+button:
+  - platform: thermia_itec_eco
+    hot_water_top_up:
+      name: Start hot water top-up
+
+switch:
+  - platform: thermia_itec_eco
+    id: heat_pump_switches  # lets test.host.yaml override this entry
+    room_sensor:
+      name: Room sensor emulation

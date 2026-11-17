@@ -1,0 +1,27 @@
+# Listen only: no room sensor emulation, so no TX pin.
+substitutions:
+  device_name: thermia-passive-esp32-idf
+
+packages:
+  base: !include ../common/esp32-idf.yaml
+
+uart:
+  id: uart_bus
+  rx_pin: GPIO18
+  baud_rate: 9600
+  parity: EVEN
+
+thermia_itec_eco:
+  uart_id: uart_bus
+
+sensor:
+  - platform: thermia_itec_eco
+    supply_temperature:
+      name: Supply temperature
+    outdoor_temperature:
+      name: Outdoor temperature
+
+binary_sensor:
+  - platform: thermia_itec_eco
+    compressor:
+      name: Compressor

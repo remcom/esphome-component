@@ -1,0 +1,22 @@
+substitutions:
+  device_name: thermia-itec-eco-esp32-ard
+
+packages:
+  base: !include ../common/esp32-ard.yaml
+  thermia_itec_eco: !include common.yaml
+
+uart:
+  id: uart_bus
+  # Waveshare ESP32-S3-RS485-CAN pins; the flow control pin drives the transceiver's DE/RE
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  flow_control_pin: GPIO21
+  baud_rate: 9600
+  parity: EVEN
+
+sensor:
+  - platform: homeassistant
+    id: room_temperature_input
+    entity_id: sensor.living_room_temperature
+
+api:
